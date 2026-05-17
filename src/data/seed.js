@@ -213,13 +213,14 @@ export const initialNodes = [
     when: "Publish step",
     title: "Gating — plan + permissions",
     where: "/publish/widgets",
-    desc: "Two banners and a modal gate the merchant here.",
+    desc:
+      "Three gates have to all pass for the widget to render on the storefront: paid plan, App Embed active, and at least one widget switched on.",
     events: [
       {
         type: "banner",
         icon: "🔒",
         title: "Free Plan Upgrade (critical)",
-        subtitle: "Free plan + paid widget feature → 'See plans'",
+        subtitle: "Gate 1 — free plan blocks publishing",
         detail:
           "Critical-tone banner with a 'See plans' button. Routes to /settings/plan.",
       },
@@ -227,9 +228,17 @@ export const initialNodes = [
         type: "banner",
         icon: "🧩",
         title: "App Embed Widget Status",
-        subtitle: "Green when enabled · deep-link to theme editor",
+        subtitle: "Gate 2 — embed must be active in Shopify theme",
         detail:
-          "The 'Activate' button deep-links into the Shopify theme editor so they can add the Convi app block.",
+          "The 'Activate' button deep-links into the Shopify theme editor so they can add the Convi app block. Without it, the storefront has nowhere to mount Convi.",
+      },
+      {
+        type: "banner",
+        icon: "🟢",
+        title: "Widget toggles (Bubble / FAQ / …)",
+        subtitle: "Gate 3 — at least one surface needs to be on",
+        detail:
+          "Per-widget on/off switches. Even with a paid plan and active embed, nothing renders if every widget is off.",
       },
       {
         type: "modal",
@@ -242,18 +251,46 @@ export const initialNodes = [
     ],
   }),
 
-  // Conditional gate — only paid-plan merchants can publish the widget.
+  // Conditional gate — three checks must all pass for the widget to render
+  // on the storefront. Each "no" loops back to stage 6 with the blocker
+  // labeled on the edge so the merchant sees what's needed.
   {
-    id: "6c",
+    id: "6c1",
     type: "condition",
     position: { x: LANE_X.merchant, y: 0 }, // set in layout pass
     data: {
       lane: "merchant",
-      label: "Is the merchant on a paid plan?",
+      label: "1 · Is the merchant on a paid plan?",
       hint:
         "Free-plan merchants can't enable the widget. They're routed back to the upgrade banner until they upgrade.",
       yesLabel: "Paid plan",
       noLabel: "Free plan",
+    },
+  },
+  {
+    id: "6c2",
+    type: "condition",
+    position: { x: LANE_X.merchant, y: 0 },
+    data: {
+      lane: "merchant",
+      label: "2 · Is App Embed enabled in the Shopify theme?",
+      hint:
+        "The Convi app block has to be added in the Shopify theme editor. Without it, the storefront has nowhere to mount the widget.",
+      yesLabel: "Enabled",
+      noLabel: "Disabled",
+    },
+  },
+  {
+    id: "6c3",
+    type: "condition",
+    position: { x: LANE_X.merchant, y: 0 },
+    data: {
+      lane: "merchant",
+      label: "3 · Is at least one widget switched on?",
+      hint:
+        "Bubble, FAQ, or another widget surface must be active. With all surfaces off, nothing renders even when plan + embed are good.",
+      yesLabel: "≥ 1 active",
+      noLabel: "All off",
     },
   },
 
@@ -774,33 +811,27 @@ for (let i = 0; i < _stageSeq.length - 1; i++) {
   });
 }
 
-initialEdges.push({
-  id: "e-6-6c",
-  source: "6",
-  target: "6c",
-  type: "smoothstep",
-  style: _baseEdgeStyle,
-});
-initialEdges.push({
-  id: "e-6c-7",
-  source: "6c",
+// Helpers to keep the three-condition chain edges concise.
+const _yesEdge = (id, source, target, label) => ({
+  id,
+  source,
   sourceHandle: "yes",
-  target: "7",
+  target,
   type: "smoothstep",
-  label: "Paid plan ✓ publish allowed",
+  label,
   style: { stroke: "#16a34a", strokeWidth: 2 },
   labelStyle: { fill: "#15803d", fontWeight: 700, fontSize: 11 },
   labelBgStyle: { fill: "#dcfce7" },
   labelBgPadding: [6, 4],
   labelBgBorderRadius: 6,
 });
-initialEdges.push({
-  id: "e-6c-6",
-  source: "6c",
+const _noEdge = (id, source, target, label) => ({
+  id,
+  source,
   sourceHandle: "no",
-  target: "6",
+  target,
   type: "smoothstep",
-  label: "Free plan ✗ blocked from publishing",
+  label,
   animated: true,
   style: { stroke: "#dc2626", strokeWidth: 2, strokeDasharray: "6 4" },
   labelStyle: { fill: "#b91c1c", fontWeight: 700, fontSize: 11 },
@@ -808,6 +839,35 @@ initialEdges.push({
   labelBgPadding: [6, 4],
   labelBgBorderRadius: 6,
 });
+
+// Stage 6 enters the chain
+initialEdges.push({
+  id: "e-6-6c1",
+  source: "6",
+  target: "6c1",
+  type: "smoothstep",
+  style: _baseEdgeStyle,
+});
+
+// 1. Paid plan? — yes flows on, no kicks back with the blocker labeled
+initialEdges.push(_yesEdge("e-6c1-6c2", "6c1", "6c2", "Paid plan ✓"));
+initialEdges.push(
+  _noEdge("e-6c1-6", "6c1", "6", "Free plan — upgrade required"),
+);
+
+// 2. App Embed active in theme? — yes flows on, no kicks back
+initialEdges.push(_yesEdge("e-6c2-6c3", "6c2", "6c3", "App embed on ✓"));
+initialEdges.push(
+  _noEdge("e-6c2-6", "6c2", "6", "App embed off — activate in theme"),
+);
+
+// 3. At least one widget enabled? — yes publishes, no kicks back
+initialEdges.push(
+  _yesEdge("e-6c3-7", "6c3", "7", "Widget on ✓ publish allowed"),
+);
+initialEdges.push(
+  _noEdge("e-6c3-6", "6c3", "6", "All widgets off — enable at least one"),
+);
 
 export const TYPE_LABEL = {
   email: "Email",
