@@ -3,6 +3,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   addEdge,
@@ -13,13 +14,20 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import StageNode from "./StageNode";
+import NoteNode from "./NoteNode";
 import Toolbar from "./Toolbar";
 import ViewsPanel from "./ViewsPanel";
 import NodeForm from "./NodeForm";
 import EventDetail from "./EventDetail";
+import FloatingToolbar from "./FloatingToolbar";
 import { initialNodes, initialEdges, defaultFilters } from "../data/seed";
+import {
+  loadLocal,
+  saveLocal,
+  fetchRemoteViews,
+  pushRemoteViews,
+} from "../lib/viewsApi";
 
-const VIEWS_KEY = "conjourney_views_v1";
 const CURRENT_KEY = "conjourney_current_v1";
 
 function makeDefaultView() {
@@ -32,29 +40,22 @@ function makeDefaultView() {
   };
 }
 
-function loadViews() {
-  try {
-    const raw = localStorage.getItem(VIEWS_KEY);
-    if (!raw) return [makeDefaultView()];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0)
-      return [makeDefaultView()];
-    return parsed;
-  } catch {
-    return [makeDefaultView()];
-  }
-}
-
 function uid(prefix = "n") {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 }
 
 function EditorInner({ onLogout }) {
-  const [views, setViews] = useState(() => loadViews());
-  const [currentViewId, setCurrentViewId] = useState(() => {
-    const stored = localStorage.getItem(CURRENT_KEY);
-    return stored || "default";
+  const [views, setViews] = useState(() => {
+    const local = loadLocal();
+    if (Array.isArray(local) && local.length) return local;
+    return [makeDefaultView()];
   });
+  const [currentViewId, setCurrentViewId] = useState(() => {
+    return localStorage.getItem(CURRENT_KEY) || "default";
+  });
+
+  // Sync status: 'loading' | 'remote' | 'local' | 'offline'
+  const [sync, setSync] = useState({ state: "loading", label: "Syncing…" });
 
   const currentView =
     views.find((v) => v.id === currentViewId) || views[0];
@@ -69,15 +70,60 @@ function EditorInner({ onLogout }) {
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeStage, setActiveStage] = useState(null);
   const [toast, setToast] = useState(null);
-  const [mode, setMode] = useState("select"); // 'select' | 'hand'
+  const [mode, setMode] = useState("select"); // 'select' | 'hand' | 'note'
 
   const skipReloadRef = useRef(false);
   const rf = useReactFlow();
 
-  // Persist views and current view id
+  // --- initial remote fetch ---------------------------------------------------
   useEffect(() => {
-    localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
-  }, [views]);
+    let cancelled = false;
+    fetchRemoteViews().then((res) => {
+      if (cancelled) return;
+      if (res.ok && Array.isArray(res.views) && res.views.length) {
+        skipReloadRef.current = true;
+        setViews(res.views);
+        const target =
+          res.views.find((v) => v.id === currentViewId) || res.views[0];
+        setCurrentViewId(target.id);
+        setNodes(target.nodes);
+        setEdges(target.edges);
+        setFilters(target.filters || defaultFilters());
+        setSync({
+          state: "remote",
+          label: "Shared",
+          tooltip: "Synced with the shared backend",
+        });
+        setTimeout(() => rf.fitView({ padding: 0.18, duration: 200 }), 80);
+      } else if (res.ok) {
+        setSync({
+          state: "remote",
+          label: "Shared",
+          tooltip: "Connected to shared backend (no views saved yet)",
+        });
+      } else if (res.configured === false) {
+        setSync({
+          state: "local",
+          label: "Local only",
+          tooltip:
+            "Shared backend (Vercel KV) is not connected. Views are kept in this browser only — see README.",
+        });
+      } else {
+        setSync({
+          state: "offline",
+          label: "Offline",
+          tooltip: "Couldn't reach the backend. Changes stay in this browser.",
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist locally on every change (still a fallback cache)
+  useEffect(() => saveLocal(views), [views]);
   useEffect(() => {
     localStorage.setItem(CURRENT_KEY, currentViewId);
   }, [currentViewId]);
@@ -102,7 +148,7 @@ function EditorInner({ onLogout }) {
     setTimeout(() => setToast(null), 2200);
   }
 
-  // Keyboard shortcuts: +/- zoom, V = select, H = hand
+  // Keyboard shortcuts: +/- zoom, V/H/N modes
   useEffect(() => {
     function onKey(e) {
       const t = e.target;
@@ -125,7 +171,10 @@ function EditorInner({ onLogout }) {
         flashToast("Hand mode — drag the canvas to pan");
       } else if (e.key === "v" || e.key === "V") {
         setMode("select");
-        flashToast("Select mode — drag to select, click to edit");
+        flashToast("Select mode");
+      } else if (e.key === "n" || e.key === "N") {
+        setMode("note");
+        flashToast("Note mode — click anywhere on the canvas");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -138,10 +187,6 @@ function EditorInner({ onLogout }) {
     setActiveStage(stage);
   }, []);
 
-  const onEditNode = useCallback((stage) => {
-    setEditingId(String(stage.id ?? stage.nodeId ?? ""));
-  }, []);
-
   const onDeleteNode = useCallback(
     (stage) => {
       const id = String(stage.nodeId);
@@ -150,6 +195,22 @@ function EditorInner({ onLogout }) {
       setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
     },
     [setNodes, setEdges],
+  );
+
+  const onNoteChange = useCallback(
+    (id, patch) => {
+      setNodes((ns) =>
+        ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)),
+      );
+    },
+    [setNodes],
+  );
+
+  const onNoteDelete = useCallback(
+    (id) => {
+      setNodes((ns) => ns.filter((n) => n.id !== id));
+    },
+    [setNodes],
   );
 
   // When entering edit mode by id, find the node and prefill the form
@@ -164,18 +225,30 @@ function EditorInner({ onLogout }) {
 
   // Inject filters + callbacks into each node's data so the StageNode picks them up
   const renderedNodes = useMemo(() => {
-    return nodes.map((n) => ({
-      ...n,
-      data: {
-        ...n.data,
-        nodeId: n.id,
-        filters,
-        onEventClick,
-        onEdit: (stage) => setEditingId(String(stage.nodeId ?? n.id)),
-        onDelete: (stage) => onDeleteNode({ ...stage, nodeId: n.id }),
-      },
-    }));
-  }, [nodes, filters, onEventClick, onDeleteNode]);
+    return nodes.map((n) => {
+      if (n.type === "note") {
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            onChange: onNoteChange,
+            onDelete: onNoteDelete,
+          },
+        };
+      }
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          nodeId: n.id,
+          filters,
+          onEventClick,
+          onEdit: (stage) => setEditingId(String(stage.nodeId ?? n.id)),
+          onDelete: (stage) => onDeleteNode({ ...stage, nodeId: n.id }),
+        },
+      };
+    });
+  }, [nodes, filters, onEventClick, onDeleteNode, onNoteChange, onNoteDelete]);
 
   const onConnect = useCallback(
     (params) =>
@@ -230,6 +303,26 @@ function EditorInner({ onLogout }) {
     [nodes, setNodes, setEdges],
   );
 
+  // Note mode: click empty canvas to drop a sticky note at that point
+  const onPaneClick = useCallback(
+    (e) => {
+      if (mode !== "note") return;
+      const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const id = uid("note");
+      setNodes((ns) => [
+        ...ns,
+        {
+          id,
+          type: "note",
+          position: { x: pos.x - 110, y: pos.y - 60 },
+          data: { text: "", color: "amber" },
+        },
+      ]);
+      flashToast("Note added — double-click to write");
+    },
+    [mode, rf, setNodes],
+  );
+
   function handleAddNode() {
     setEditingId(null);
     setShowForm(true);
@@ -258,36 +351,60 @@ function EditorInner({ onLogout }) {
     setEditingId(null);
   }
 
-  function saveCurrentView() {
+  // Save / sync helpers ------------------------------------------------------
+  async function pushAndUpdate(nextViews, successMessage) {
     skipReloadRef.current = true;
-    setViews((vs) =>
-      vs.map((v) =>
-        v.id === currentViewId
-          ? { ...v, nodes, edges, filters }
-          : v,
-      ),
+    setViews(nextViews);
+    setSync((s) => ({ ...s, state: "loading", label: "Saving…" }));
+    const res = await pushRemoteViews(nextViews);
+    if (res.ok) {
+      setSync({
+        state: "remote",
+        label: "Shared",
+        tooltip: "Synced with the shared backend",
+      });
+      flashToast(successMessage || "Saved to shared backend");
+    } else if (res.configured === false) {
+      setSync({
+        state: "local",
+        label: "Local only",
+        tooltip:
+          "Shared backend (Vercel KV) is not connected. Views are kept in this browser only.",
+      });
+      flashToast(successMessage || "Saved locally (backend not connected)");
+    } else {
+      setSync({
+        state: "offline",
+        label: "Offline",
+        tooltip: "Couldn't reach the backend. Saved locally only.",
+      });
+      flashToast("Saved locally — backend unreachable");
+    }
+  }
+
+  function saveCurrentView() {
+    const next = views.map((v) =>
+      v.id === currentViewId ? { ...v, nodes, edges, filters } : v,
     );
-    flashToast(`Saved “${currentView.name}”`);
+    pushAndUpdate(next, `Saved "${currentView.name}"`);
   }
 
   function createView() {
     const id = uid("v");
+    const newView = {
+      id,
+      name: "Untitled view",
+      nodes: [],
+      edges: [],
+      filters: defaultFilters(),
+    };
     skipReloadRef.current = true;
-    setViews((vs) => [
-      ...vs,
-      {
-        id,
-        name: "Untitled view",
-        nodes: [],
-        edges: [],
-        filters: defaultFilters(),
-      },
-    ]);
     setCurrentViewId(id);
     setNodes([]);
     setEdges([]);
     setFilters(defaultFilters());
     setShowViews(false);
+    pushAndUpdate([...views, newView], "New view created");
   }
 
   function duplicateView(id) {
@@ -295,33 +412,29 @@ function EditorInner({ onLogout }) {
     if (!v) return;
     const newId = uid("v");
     const snapshot =
-      v.id === currentViewId
-        ? { ...v, nodes, edges, filters }
-        : v;
+      v.id === currentViewId ? { ...v, nodes, edges, filters } : v;
+    const copy = { ...snapshot, id: newId, name: `${v.name} (copy)` };
     skipReloadRef.current = true;
-    setViews((vs) => [
-      ...vs,
-      { ...snapshot, id: newId, name: `${v.name} (copy)` },
-    ]);
     setCurrentViewId(newId);
     setNodes(snapshot.nodes);
     setEdges(snapshot.edges);
     setFilters(snapshot.filters || defaultFilters());
     setShowViews(false);
-    flashToast("View duplicated");
+    pushAndUpdate([...views, copy], "View duplicated");
   }
 
   function renameView(id, name) {
-    setViews((vs) => vs.map((v) => (v.id === id ? { ...v, name } : v)));
+    const next = views.map((v) => (v.id === id ? { ...v, name } : v));
+    pushAndUpdate(next);
   }
 
   function deleteView(id) {
     if (views.length === 1) return;
     const remaining = views.filter((v) => v.id !== id);
-    setViews(remaining);
     if (id === currentViewId) {
       setCurrentViewId(remaining[0].id);
     }
+    pushAndUpdate(remaining, "View deleted");
   }
 
   function selectView(id) {
@@ -349,15 +462,12 @@ function EditorInner({ onLogout }) {
         views={views}
         currentViewId={currentViewId}
         filters={filters}
-        mode={mode}
-        onChangeMode={setMode}
         onChangeView={selectView}
         onAddNode={handleAddNode}
         onOpenViews={() => setShowViews(true)}
         onSaveView={saveCurrentView}
         onLogout={onLogout}
         onToggleFilter={toggleFilter}
-        onFitView={fitView}
       />
 
       <div className={`canvas mode-${mode}`}>
@@ -368,6 +478,7 @@ function EditorInner({ onLogout }) {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
           nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.2 }}
@@ -377,23 +488,38 @@ function EditorInner({ onLogout }) {
           proOptions={{ hideAttribution: true }}
           panOnDrag={mode === "hand" ? true : [1, 2]}
           selectionOnDrag={mode === "select"}
-          nodesDraggable={mode === "select"}
+          nodesDraggable={mode === "select" || mode === "note"}
           panOnScroll={false}
           zoomOnScroll={true}
         >
-          <Background gap={28} size={1} color="rgba(15, 15, 26, 0.06)" />
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={22}
+            size={1.6}
+            color="rgba(15, 15, 26, 0.16)"
+          />
           <MiniMap
             pannable
             zoomable
             nodeColor={miniMapColor}
-            maskColor="rgba(91, 79, 233, 0.06)"
+            maskColor="rgba(125, 113, 254, 0.06)"
           />
           <Controls position="bottom-right" showInteractive={false} />
         </ReactFlow>
 
+        <FloatingToolbar
+          mode={mode}
+          onChangeMode={setMode}
+          onAddNode={handleAddNode}
+          onFitView={fitView}
+          onSaveView={saveCurrentView}
+          sync={sync}
+        />
+
         <div className="hint">
-          <kbd>V</kbd> select · <kbd>H</kbd> hand · <kbd>+</kbd>/<kbd>−</kbd>{" "}
-          zoom · drag from a handle to connect · click an edge to insert a node.
+          <kbd>V</kbd> select · <kbd>H</kbd> hand · <kbd>N</kbd> note ·{" "}
+          <kbd>+</kbd>/<kbd>−</kbd> zoom · click an edge to insert a node ·
+          double-click a note to edit.
         </div>
       </div>
 
@@ -434,12 +560,13 @@ function EditorInner({ onLogout }) {
   );
 }
 
-const NODE_TYPES = { stage: StageNode };
+const NODE_TYPES = { stage: StageNode, note: NoteNode };
 
 function miniMapColor(node) {
+  if (node?.type === "note") return "#f59e0b";
   const lane = node?.data?.lane;
-  if (lane === "merchant") return "#7C5CFF";
-  if (lane === "shopper") return "#14B8A6";
+  if (lane === "merchant") return "#7d71fe";
+  if (lane === "shopper") return "#0d9488";
   return "#9CA3AF";
 }
 

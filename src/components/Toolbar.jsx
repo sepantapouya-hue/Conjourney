@@ -2,19 +2,15 @@ import { ALL_TYPES, TYPE_LABEL } from "../data/seed";
 import Logo from "./Logo";
 
 export default function Toolbar({
-  viewName,
   views,
   currentViewId,
   filters,
-  mode,
-  onChangeMode,
   onChangeView,
   onAddNode,
   onOpenViews,
   onSaveView,
   onLogout,
   onToggleFilter,
-  onFitView,
 }) {
   return (
     <header className="toolbar">
@@ -64,51 +60,6 @@ export default function Toolbar({
       </div>
 
       <div className="toolbar-right">
-        <div className="mode-toggle" role="group" aria-label="Canvas mode">
-          <button
-            type="button"
-            className={`mode-btn ${mode === "select" ? "on" : ""}`}
-            onClick={() => onChangeMode("select")}
-            title="Select mode (V)"
-            aria-pressed={mode === "select"}
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M5.5 3.5 19 12l-6.6.8-2.2 6.5z"
-              />
-            </svg>
-            <span>V</span>
-          </button>
-          <button
-            type="button"
-            className={`mode-btn ${mode === "hand" ? "on" : ""}`}
-            onClick={() => onChangeMode("hand")}
-            title="Hand mode (H)"
-            aria-pressed={mode === "hand"}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              aria-hidden="true"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M7 11V6a1.5 1.5 0 1 1 3 0v5" />
-              <path d="M10 10V4a1.5 1.5 0 1 1 3 0v6" />
-              <path d="M13 10V5a1.5 1.5 0 1 1 3 0v6" />
-              <path d="M16 11V8a1.5 1.5 0 1 1 3 0v7c0 4-2.7 7-7 7s-7-3-7-7v-3c0-1.5 1.6-2 2.6-1.1l1.4 1.1" />
-            </svg>
-            <span>H</span>
-          </button>
-        </div>
-        <button type="button" className="btn-ghost" onClick={onFitView}>
-          Fit view
-        </button>
         <button type="button" className="btn-primary" onClick={onAddNode}>
           + Add node
         </button>

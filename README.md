@@ -85,6 +85,24 @@ vercel --prod
         └── EventDetail.jsx Side panel when clicking an event chip
 ```
 
+## Shared backend (so all users see the same views)
+
+By default the app runs in **Local-only** mode — views persist in the
+browser's localStorage. To share views across all users (everyone who
+knows the password sees the same map), connect a **Vercel KV** store:
+
+1. Open the Vercel project → **Storage** → **Create** → **KV**.
+2. Connect the store to this project (Vercel injects two env vars:
+   `KV_REST_API_URL` and `KV_REST_API_TOKEN`).
+3. Redeploy. The serverless function at `/api/views` will start using
+   KV automatically, and the floating toolbar status will switch from
+   **Local only** → **Shared**.
+
+When connected, every `Save view`, `Create`, `Rename`, `Duplicate`, and
+`Delete` action pushes the entire views array to KV. New visitors fetch
+it on load. If KV is ever unreachable, the app falls back to localStorage
+and the indicator shows **Offline**.
+
 ## Note on password protection
 
 The password gate is **client-side only** — the bundle ships to every
