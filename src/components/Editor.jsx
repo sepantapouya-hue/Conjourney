@@ -31,6 +31,7 @@ import {
   initialEdges,
   defaultFilters,
   LAYOUT,
+  INITIAL_VIEWS,
 } from "../data/seed";
 import {
   loadLocal,
@@ -42,14 +43,14 @@ import {
 const CURRENT_KEY = "conjourney_current_v2";
 const HISTORY_MAX = 50;
 
-function makeDefaultView() {
-  return {
-    id: "default",
-    name: "Full journey",
-    nodes: initialNodes,
-    edges: initialEdges,
-    filters: defaultFilters(),
-  };
+function makeDefaultViews() {
+  // Clone so that resetting later doesn't mutate the canonical objects.
+  return INITIAL_VIEWS.map((v) => ({
+    ...v,
+    nodes: v.nodes.map((n) => ({ ...n, position: { ...n.position }, data: { ...n.data } })),
+    edges: v.edges.map((e) => ({ ...e })),
+    filters: { ...v.filters },
+  }));
 }
 
 function uid(prefix = "n") {
@@ -60,10 +61,10 @@ function EditorInner({ onLogout }) {
   const [views, setViews] = useState(() => {
     const local = loadLocal();
     if (Array.isArray(local) && local.length) return local;
-    return [makeDefaultView()];
+    return makeDefaultViews();
   });
   const [currentViewId, setCurrentViewId] = useState(() => {
-    return localStorage.getItem(CURRENT_KEY) || "default";
+    return localStorage.getItem(CURRENT_KEY) || "merchant";
   });
 
   const [sync, setSync] = useState({ state: "loading", label: "Syncing…" });
@@ -660,6 +661,18 @@ function EditorInner({ onLogout }) {
     setShowViews(false);
   }
 
+  function resetToDefaults() {
+    const fresh = makeDefaultViews();
+    skipReloadRef.current = true;
+    setCurrentViewId(fresh[0].id);
+    restoringRef.current = true;
+    setNodes(fresh[0].nodes);
+    setEdges(fresh[0].edges);
+    setFilters(fresh[0].filters);
+    setShowViews(false);
+    pushAndUpdate(fresh, "Reset to default journeys");
+  }
+
   function toggleFilter(t) {
     const nextFilters = { ...filters, [t]: !filters[t] };
     setFilters(nextFilters);
@@ -819,6 +832,7 @@ function EditorInner({ onLogout }) {
           onDuplicate={duplicateView}
           onRename={renameView}
           onDelete={deleteView}
+          onReset={resetToDefaults}
         />
       )}
 

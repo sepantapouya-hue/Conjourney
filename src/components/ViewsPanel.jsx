@@ -9,6 +9,7 @@ export default function ViewsPanel({
   onDuplicate,
   onRename,
   onDelete,
+  onReset,
 }) {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState("");
@@ -41,6 +42,24 @@ export default function ViewsPanel({
           >
             + New blank view
           </button>
+          {onReset && (
+            <button
+              type="button"
+              className="btn-ghost block"
+              style={{ marginTop: 8 }}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Replace ALL current views with the default Merchant / Customer / Full journeys? This pushes to the shared backend and overwrites any custom views.",
+                  )
+                ) {
+                  onReset();
+                }
+              }}
+            >
+              ↻ Reset to default journeys (Merchant + Customer + Full)
+            </button>
+          )}
           <div className="view-list">
             {views.map((v) => (
               <div

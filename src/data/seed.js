@@ -824,3 +824,67 @@ export const ALL_TYPES = Object.keys(TYPE_LABEL);
 export function defaultFilters() {
   return Object.fromEntries(ALL_TYPES.map((t) => [t, true]));
 }
+
+// --- Split journeys (Merchant vs Customer) --------------------------------
+// Cross-cutting stages (lane === 'both') appear in both views because they
+// touch both parties (OTP, handover, etc.).
+
+function _layoutClone(nodes) {
+  const out = nodes.map((n) => ({
+    ...n,
+    position: { ...n.position },
+    data: { ...n.data },
+  }));
+  let cursor = Y_START;
+  for (const n of out) {
+    const lane = n.data.lane || "merchant";
+    n.position = { x: LANE_X[lane] ?? LANE_X.merchant, y: cursor };
+    if (n.type === "condition") {
+      cursor += COND_H + GAP;
+    } else {
+      const evCount = n.data.events?.length || 0;
+      cursor += STAGE_BASE_H + evCount * STAGE_EV_H + GAP;
+    }
+  }
+  return out;
+}
+
+function _filterByLanes(allowed) {
+  const setAllowed = new Set(allowed);
+  const filtered = initialNodes.filter((n) =>
+    setAllowed.has(n.data.lane || "merchant"),
+  );
+  const placed = _layoutClone(filtered);
+  const ids = new Set(placed.map((n) => n.id));
+  const edges = initialEdges
+    .filter((e) => ids.has(e.source) && ids.has(e.target))
+    .map((e) => ({ ...e }));
+  return { nodes: placed, edges };
+}
+
+const _merchant = _filterByLanes(["merchant", "both"]);
+const _customer = _filterByLanes(["shopper", "both"]);
+
+export const INITIAL_VIEWS = [
+  {
+    id: "merchant",
+    name: "🛍️ Merchant journey",
+    nodes: _merchant.nodes,
+    edges: _merchant.edges,
+    filters: defaultFilters(),
+  },
+  {
+    id: "customer",
+    name: "🛒 Customer journey",
+    nodes: _customer.nodes,
+    edges: _customer.edges,
+    filters: defaultFilters(),
+  },
+  {
+    id: "full",
+    name: "🌐 Full journey",
+    nodes: initialNodes,
+    edges: initialEdges,
+    filters: defaultFilters(),
+  },
+];

@@ -300,9 +300,11 @@ body {
 .btn-ghost.logout {
   color: var(--ink-mute);
 }
-.btn-primary.block {
+.btn-primary.block,
+.btn-ghost.block {
   display: block;
   width: 100%;
+  text-align: center;
 }
 
 /* filter chips */
