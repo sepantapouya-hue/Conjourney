@@ -18,6 +18,7 @@ import NoteNode from "./NoteNode";
 import ConditionNode from "./ConditionNode";
 import { LiveCursors, PresenceTracker } from "./LivePresence";
 import { presenceEnabled } from "./PresenceProvider";
+import LiveEditSync from "./LiveEditSync";
 import Toolbar from "./Toolbar";
 import ViewsPanel from "./ViewsPanel";
 import NodeForm from "./NodeForm";
@@ -767,6 +768,21 @@ function EditorInner({ onLogout }) {
             viewId={currentViewId}
             viewName={currentView.name}
             mode={mode}
+          />
+        )}
+
+        {presenceEnabled && (
+          <LiveEditSync
+            nodes={nodes}
+            edges={edges}
+            filters={filters}
+            currentViewId={currentViewId}
+            onRemotePatch={(nextNodes, nextEdges, nextFilters) => {
+              restoringRef.current = true;
+              setNodes(nextNodes);
+              setEdges(nextEdges);
+              setFilters(nextFilters);
+            }}
           />
         )}
 

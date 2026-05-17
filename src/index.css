@@ -535,9 +535,14 @@ body {
   border: 2px solid var(--surface);
   margin-left: -8px;
   position: relative;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   transition: transform 0.12s;
+  padding: 0;
+  font-family: inherit;
+}
+.presence-avatar:disabled {
+  cursor: default;
 }
 .presence-avatar:first-child {
   margin-left: 0;

@@ -20,12 +20,12 @@ export function LiveCursors() {
               transform: `translate(${presence.cursor.x}px, ${presence.cursor.y}px)`,
             }}
           >
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
               <path
                 d="M5 3l14 8-6 1.5-2 6z"
                 fill={color}
                 stroke="#fff"
-                strokeWidth="1.2"
+                strokeWidth="1.5"
                 strokeLinejoin="round"
               />
             </svg>
@@ -82,8 +82,16 @@ export function PresenceTracker({ canvasRef, viewId, viewName, mode }) {
 export function PresenceCluster() {
   const self = useSelf();
   const others = useOthers();
+  const rf = useReactFlow();
   const all = self ? [{ self: true, ...self }, ...others] : others;
   if (all.length === 0) return null;
+
+  function follow(p) {
+    if (p.self) return;
+    const cursor = p.presence?.cursor;
+    if (!cursor) return;
+    rf.setCenter(cursor.x, cursor.y, { zoom: 1, duration: 400 });
+  }
 
   return (
     <div className="presence-cluster" title={`${all.length} online`}>
@@ -92,22 +100,29 @@ export function PresenceCluster() {
         const color = u.color || "#94a3b8";
         const name = u.name || "Anon";
         const viewName = p.presence?.viewName || "";
+        const hasCursor = !!p.presence?.cursor;
         const tip = p.self
           ? `${name} (you)${viewName ? " · " + viewName : ""}`
-          : `${name}${viewName ? " · viewing " + viewName : ""}`;
+          : `${name}${viewName ? " · viewing " + viewName : ""}${hasCursor ? " · click to jump to cursor" : ""}`;
         return (
-          <span
+          <button
+            type="button"
             key={p.connectionId ?? "self"}
             className={`presence-avatar ${p.self ? "self" : ""}`}
             style={{ background: color, zIndex: 20 - i }}
             title={tip}
+            onClick={() => follow(p)}
+            disabled={p.self || !hasCursor}
           >
             {initials(name)}
-          </span>
+          </button>
         );
       })}
       {all.length > 5 && (
-        <span className="presence-avatar more" title={`${all.length - 5} more online`}>
+        <span
+          className="presence-avatar more"
+          title={`${all.length - 5} more online`}
+        >
           +{all.length - 5}
         </span>
       )}
