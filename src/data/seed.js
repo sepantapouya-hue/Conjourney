@@ -721,12 +721,22 @@ export const initialNodes = [
 ];
 
 // --- Layout pass: stack vertically with enough room that no card overlaps
-// the next one, regardless of how many events it contains.
-const Y_START = 60;
-const STAGE_BASE_H = 280; // header + desc + actions buffer for a stage card
-const STAGE_EV_H = 44; // per event row inside a stage card
-const COND_H = 220; // condition node total height
-const GAP = 140; // breathing room between cards
+// the next one, regardless of how many events it contains. Exported so the
+// "Tidy" / auto-layout button can reuse the same constants.
+export const LAYOUT = {
+  LANE_X,
+  Y_START: 60,
+  STAGE_BASE_H: 280,
+  STAGE_EV_H: 44,
+  COND_H: 220,
+  GAP: 140,
+};
+
+const Y_START = LAYOUT.Y_START;
+const STAGE_BASE_H = LAYOUT.STAGE_BASE_H;
+const STAGE_EV_H = LAYOUT.STAGE_EV_H;
+const COND_H = LAYOUT.COND_H;
+const GAP = LAYOUT.GAP;
 {
   let cursor = Y_START;
   for (const node of initialNodes) {

@@ -21,7 +21,14 @@ import ViewsPanel from "./ViewsPanel";
 import NodeForm from "./NodeForm";
 import EventDetail from "./EventDetail";
 import FloatingToolbar from "./FloatingToolbar";
-import { initialNodes, initialEdges, defaultFilters } from "../data/seed";
+import CommandPalette from "./CommandPalette";
+import HistoryPanel from "./HistoryPanel";
+import {
+  initialNodes,
+  initialEdges,
+  defaultFilters,
+  LAYOUT,
+} from "../data/seed";
 import {
   loadLocal,
   saveLocal,
@@ -30,6 +37,7 @@ import {
 } from "../lib/viewsApi";
 
 const CURRENT_KEY = "conjourney_current_v2";
+const HISTORY_MAX = 50;
 
 function makeDefaultView() {
   return {
@@ -55,7 +63,6 @@ function EditorInner({ onLogout }) {
     return localStorage.getItem(CURRENT_KEY) || "default";
   });
 
-  // Sync status: 'loading' | 'remote' | 'local' | 'offline'
   const [sync, setSync] = useState({ state: "loading", label: "Syncing…" });
 
   const currentView =
@@ -67,16 +74,107 @@ function EditorInner({ onLogout }) {
 
   const [showViews, setShowViews] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeStage, setActiveStage] = useState(null);
   const [toast, setToast] = useState(null);
-  const [mode, setMode] = useState("select"); // 'select' | 'hand' | 'note'
+  const [mode, setMode] = useState("select");
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Undo / redo history (in-memory, per session)
+  const [history, setHistory] = useState([]);
+  const [pointer, setPointer] = useState(-1);
+  const restoringRef = useRef(false);
 
   const skipReloadRef = useRef(false);
   const rf = useReactFlow();
 
-  // --- initial remote fetch ---------------------------------------------------
+  function flashToast(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  }
+
+  // Take a snapshot. Called after every meaningful edit.
+  const pushSnapshot = useCallback(
+    (nextNodes, nextEdges, nextFilters, label) => {
+      if (restoringRef.current) {
+        restoringRef.current = false;
+        return;
+      }
+      setHistory((h) => {
+        const trimmed = h.slice(0, pointer + 1);
+        const next = [
+          ...trimmed,
+          {
+            nodes: nextNodes,
+            edges: nextEdges,
+            filters: nextFilters,
+            label: label || "Edit",
+            at: Date.now(),
+          },
+        ];
+        return next.slice(-HISTORY_MAX);
+      });
+      setPointer((p) =>
+        Math.min(Math.min(p + 1, HISTORY_MAX - 1), HISTORY_MAX - 1),
+      );
+    },
+    [pointer],
+  );
+
+  // Apply a snapshot index without writing a new history entry
+  function restore(idx) {
+    if (idx < 0 || idx >= history.length) return;
+    const snap = history[idx];
+    restoringRef.current = true;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setFilters(snap.filters);
+    setPointer(idx);
+  }
+
+  function undo() {
+    if (pointer <= 0) return;
+    const target = history[pointer - 1];
+    restoringRef.current = true;
+    setNodes(target.nodes);
+    setEdges(target.edges);
+    setFilters(target.filters);
+    setPointer(pointer - 1);
+    flashToast(`Undid — ${history[pointer].label}`);
+  }
+
+  function redo() {
+    if (pointer >= history.length - 1) return;
+    const target = history[pointer + 1];
+    restoringRef.current = true;
+    setNodes(target.nodes);
+    setEdges(target.edges);
+    setFilters(target.filters);
+    setPointer(pointer + 1);
+    flashToast(`Redid — ${target.label}`);
+  }
+
+  // Seed the history with the initial state when the view first loads
+  useEffect(() => {
+    if (history.length === 0) {
+      setHistory([
+        {
+          nodes,
+          edges,
+          filters,
+          label: `Opened "${currentView.name}"`,
+          at: Date.now(),
+        },
+      ]);
+      setPointer(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Initial remote fetch -------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     fetchRemoteViews().then((res) => {
@@ -123,7 +221,6 @@ function EditorInner({ onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist locally on every change (still a fallback cache)
   useEffect(() => saveLocal(views), [views]);
   useEffect(() => {
     localStorage.setItem(CURRENT_KEY, currentViewId);
@@ -137,6 +234,7 @@ function EditorInner({ onLogout }) {
     }
     const v = views.find((x) => x.id === currentViewId);
     if (!v) return;
+    restoringRef.current = true;
     setNodes(v.nodes);
     setEdges(v.edges);
     setFilters(v.filters || defaultFilters());
@@ -144,12 +242,7 @@ function EditorInner({ onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentViewId]);
 
-  function flashToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2200);
-  }
-
-  // Keyboard shortcuts: +/- zoom, V/H/N modes
+  // --- Keyboard shortcuts ---------------------------------------------------
   useEffect(() => {
     function onKey(e) {
       const t = e.target;
@@ -158,6 +251,29 @@ function EditorInner({ onLogout }) {
         t?.tagName === "TEXTAREA" ||
         t?.tagName === "SELECT" ||
         t?.isContentEditable;
+
+      // Cmd+K / Ctrl+K — palette (works even inside inputs)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowPalette((s) => !s);
+        return;
+      }
+
+      // Cmd+Z / Ctrl+Z — undo. Cmd+Shift+Z or Cmd+Y — redo.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        if (editable) return;
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+        if (editable) return;
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       if (editable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -183,55 +299,62 @@ function EditorInner({ onLogout }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rf]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rf, pointer, history]);
 
-  // Event handlers wired into node data
+  // --- Node event handlers --------------------------------------------------
   const onEventClick = useCallback((event, stage) => {
     setActiveEvent(event);
     setActiveStage(stage);
   }, []);
 
-  const onDeleteNode = useCallback(
+  const onDeleteStage = useCallback(
     (stage) => {
       const id = String(stage.nodeId);
       if (!id) return;
-      setNodes((ns) => ns.filter((n) => n.id !== id));
-      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
+      const nextNodes = nodes.filter((n) => n.id !== id);
+      const nextEdges = edges.filter(
+        (e) => e.source !== id && e.target !== id,
+      );
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      pushSnapshot(nextNodes, nextEdges, filters, "Deleted node");
     },
-    [setNodes, setEdges],
+    [nodes, edges, filters, setNodes, setEdges, pushSnapshot],
   );
 
   const onNoteChange = useCallback(
     (id, patch) => {
-      setNodes((ns) =>
-        ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)),
+      const nextNodes = nodes.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, ...patch } } : n,
       );
+      setNodes(nextNodes);
+      pushSnapshot(nextNodes, edges, filters, "Edited note");
     },
-    [setNodes],
+    [nodes, edges, filters, setNodes, pushSnapshot],
   );
 
   const onNoteDelete = useCallback(
     (id) => {
-      setNodes((ns) => ns.filter((n) => n.id !== id));
-      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
+      const nextNodes = nodes.filter((n) => n.id !== id);
+      const nextEdges = edges.filter(
+        (e) => e.source !== id && e.target !== id,
+      );
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      pushSnapshot(nextNodes, nextEdges, filters, "Deleted note");
     },
-    [setNodes, setEdges],
+    [nodes, edges, filters, setNodes, setEdges, pushSnapshot],
   );
 
   const onConditionChange = onNoteChange;
   const onConditionDelete = onNoteDelete;
 
-  // When entering edit mode by id, find the node and prefill the form
   useEffect(() => {
     if (editingId == null) return;
-    if (editingId === "__new__") {
-      setShowForm(true);
-      return;
-    }
     setShowForm(true);
   }, [editingId]);
 
-  // Inject filters + callbacks into each node's data so the components pick them up
   const renderedNodes = useMemo(() => {
     return nodes.map((n) => {
       if (n.type === "note") {
@@ -258,7 +381,7 @@ function EditorInner({ onLogout }) {
           filters,
           onEventClick,
           onEdit: (stage) => setEditingId(String(stage.nodeId ?? n.id)),
-          onDelete: (stage) => onDeleteNode({ ...stage, nodeId: n.id }),
+          onDelete: (stage) => onDeleteStage({ ...stage, nodeId: n.id }),
         },
       };
     });
@@ -266,22 +389,33 @@ function EditorInner({ onLogout }) {
     nodes,
     filters,
     onEventClick,
-    onDeleteNode,
+    onDeleteStage,
     onNoteChange,
     onNoteDelete,
     onConditionChange,
     onConditionDelete,
   ]);
 
+  // --- Edges / connecting ---------------------------------------------------
   const onConnect = useCallback(
-    (params) =>
-      setEdges((eds) =>
-        addEdge({ ...params, type: "smoothstep", animated: false }, eds),
-      ),
-    [setEdges],
+    (params) => {
+      const next = addEdge(
+        {
+          ...params,
+          type: "smoothstep",
+          style: { strokeWidth: 2, stroke: "#7d71fe" },
+        },
+        edges,
+      );
+      setEdges(next);
+      pushSnapshot(nodes, next, filters, "Connected nodes");
+    },
+    [nodes, edges, filters, setEdges, pushSnapshot],
   );
 
-  // Click an edge to insert a node between the two it connects
+  const onConnectStart = useCallback(() => setIsConnecting(true), []);
+  const onConnectEnd = useCallback(() => setIsConnecting(false), []);
+
   const onEdgeClick = useCallback(
     (_evt, edge) => {
       const source = nodes.find((n) => n.id === edge.source);
@@ -305,9 +439,9 @@ function EditorInner({ onLogout }) {
           events: [],
         },
       };
-      setNodes((ns) => [...ns, newNode]);
-      setEdges((es) => [
-        ...es.filter((e) => e.id !== edge.id),
+      const nextNodes = [...nodes, newNode];
+      const nextEdges = [
+        ...edges.filter((e) => e.id !== edge.id),
         {
           id: uid("e"),
           source: edge.source,
@@ -320,48 +454,54 @@ function EditorInner({ onLogout }) {
           target: edge.target,
           type: "smoothstep",
         },
-      ]);
+      ];
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      pushSnapshot(nextNodes, nextEdges, filters, "Inserted node on edge");
       flashToast("Node inserted on the edge");
     },
-    [nodes, setNodes, setEdges],
+    [nodes, edges, filters, setNodes, setEdges, pushSnapshot],
   );
 
-  // Note / Condition mode: click empty canvas to drop a node at that point
+  const onNodeDragStop = useCallback(() => {
+    pushSnapshot(nodes, edges, filters, "Moved node");
+  }, [nodes, edges, filters, pushSnapshot]);
+
   const onPaneClick = useCallback(
     (e) => {
       const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
       if (mode === "note") {
         const id = uid("note");
-        setNodes((ns) => [
-          ...ns,
-          {
-            id,
-            type: "note",
-            position: { x: pos.x - 110, y: pos.y - 60 },
-            data: { text: "", color: "amber" },
-          },
-        ]);
+        const newNode = {
+          id,
+          type: "note",
+          position: { x: pos.x - 110, y: pos.y - 60 },
+          data: { text: "", color: "amber" },
+        };
+        const next = [...nodes, newNode];
+        setNodes(next);
+        pushSnapshot(next, edges, filters, "Added note");
         flashToast("Note added — double-click to write");
       } else if (mode === "condition") {
         const id = uid("cond");
-        setNodes((ns) => [
-          ...ns,
-          {
-            id,
-            type: "condition",
-            position: { x: pos.x - 140, y: pos.y - 80 },
-            data: {
-              label: "New condition?",
-              hint: "",
-              yesLabel: "Yes",
-              noLabel: "No",
-            },
+        const newNode = {
+          id,
+          type: "condition",
+          position: { x: pos.x - 140, y: pos.y - 80 },
+          data: {
+            label: "New condition?",
+            hint: "",
+            yesLabel: "Yes",
+            noLabel: "No",
           },
-        ]);
+        };
+        const next = [...nodes, newNode];
+        setNodes(next);
+        pushSnapshot(next, edges, filters, "Added condition");
         flashToast("Condition added — connect Yes / No branches");
       }
     },
-    [mode, rf, setNodes],
+    [mode, rf, nodes, edges, filters, setNodes, pushSnapshot],
   );
 
   function handleAddNode() {
@@ -370,12 +510,12 @@ function EditorInner({ onLogout }) {
   }
 
   function handleFormSubmit(payload) {
-    if (editingId && editingId !== "__new__") {
-      setNodes((ns) =>
-        ns.map((n) =>
-          n.id === editingId ? { ...n, data: { ...n.data, ...payload } } : n,
-        ),
+    if (editingId) {
+      const nextNodes = nodes.map((n) =>
+        n.id === editingId ? { ...n, data: { ...n.data, ...payload } } : n,
       );
+      setNodes(nextNodes);
+      pushSnapshot(nextNodes, edges, filters, "Edited node");
       flashToast("Node updated");
     } else {
       const id = uid("n");
@@ -385,14 +525,45 @@ function EditorInner({ onLogout }) {
         position: { x: 600, y: 200 },
         data: { ...payload, n: nodes.length + 1 },
       };
-      setNodes((ns) => [...ns, newNode]);
+      const nextNodes = [...nodes, newNode];
+      setNodes(nextNodes);
+      pushSnapshot(nextNodes, edges, filters, "Created node");
       flashToast("Node created");
     }
     setShowForm(false);
     setEditingId(null);
   }
 
-  // Save / sync helpers ------------------------------------------------------
+  // --- Auto layout (Tidy) ---------------------------------------------------
+  function autoLayout() {
+    const journey = [];
+    const others = [];
+    for (const n of nodes) {
+      if (n.type === "stage" || n.type === "condition") journey.push(n);
+      else others.push(n);
+    }
+    journey.sort((a, b) => a.position.y - b.position.y);
+    let cursor = LAYOUT.Y_START;
+    const placed = journey.map((n) => {
+      const lane = n.data.lane || "merchant";
+      const x = LAYOUT.LANE_X[lane] ?? LAYOUT.LANE_X.merchant;
+      const next = { ...n, position: { x, y: cursor } };
+      if (n.type === "condition") {
+        cursor += LAYOUT.COND_H + LAYOUT.GAP;
+      } else {
+        const evCount = n.data.events?.length || 0;
+        cursor += LAYOUT.STAGE_BASE_H + evCount * LAYOUT.STAGE_EV_H + LAYOUT.GAP;
+      }
+      return next;
+    });
+    const nextNodes = [...placed, ...others];
+    setNodes(nextNodes);
+    pushSnapshot(nextNodes, edges, filters, "Tidied layout");
+    setTimeout(() => rf.fitView({ padding: 0.18, duration: 400 }), 60);
+    flashToast("Layout tidied");
+  }
+
+  // --- Save / sync helpers --------------------------------------------------
   async function pushAndUpdate(nextViews, successMessage) {
     skipReloadRef.current = true;
     setViews(nextViews);
@@ -441,6 +612,7 @@ function EditorInner({ onLogout }) {
     };
     skipReloadRef.current = true;
     setCurrentViewId(id);
+    restoringRef.current = true;
     setNodes([]);
     setEdges([]);
     setFilters(defaultFilters());
@@ -457,6 +629,7 @@ function EditorInner({ onLogout }) {
     const copy = { ...snapshot, id: newId, name: `${v.name} (copy)` };
     skipReloadRef.current = true;
     setCurrentViewId(newId);
+    restoringRef.current = true;
     setNodes(snapshot.nodes);
     setEdges(snapshot.edges);
     setFilters(snapshot.filters || defaultFilters());
@@ -484,17 +657,39 @@ function EditorInner({ onLogout }) {
   }
 
   function toggleFilter(t) {
-    setFilters((f) => ({ ...f, [t]: !f[t] }));
+    const nextFilters = { ...filters, [t]: !filters[t] };
+    setFilters(nextFilters);
+    pushSnapshot(nodes, edges, nextFilters, `Toggled ${t} filter`);
   }
 
   function fitView() {
     rf.fitView({ padding: 0.18, duration: 400 });
   }
 
-  const editingNode =
-    editingId && editingId !== "__new__"
-      ? nodes.find((n) => n.id === editingId)
-      : null;
+  // Command palette callbacks
+  function paletteFocusNode(nodeId) {
+    const n = nodes.find((x) => x.id === nodeId);
+    if (!n) return;
+    const cx = n.position.x + 170;
+    const cy = n.position.y + 140;
+    rf.setCenter(cx, cy, { zoom: 1, duration: 400 });
+    setShowPalette(false);
+  }
+  function paletteOpenEvent(nodeId, event) {
+    const n = nodes.find((x) => x.id === nodeId);
+    if (n) paletteFocusNode(nodeId);
+    setActiveEvent(event);
+    setActiveStage(n?.data);
+    setShowPalette(false);
+  }
+  function paletteSwitchView(id) {
+    selectView(id);
+    setShowPalette(false);
+  }
+
+  const editingNode = editingId ? nodes.find((n) => n.id === editingId) : null;
+  const canUndo = pointer > 0;
+  const canRedo = pointer < history.length - 1;
 
   return (
     <div className="editor">
@@ -511,15 +706,20 @@ function EditorInner({ onLogout }) {
         onToggleFilter={toggleFilter}
       />
 
-      <div className={`canvas mode-${mode}`}>
+      <div
+        className={`canvas mode-${mode} ${isConnecting ? "connecting" : ""}`}
+      >
         <ReactFlow
           nodes={renderedNodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
+          onNodeDragStop={onNodeDragStop}
           nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.2 }}
@@ -530,8 +730,16 @@ function EditorInner({ onLogout }) {
           panOnDrag={mode === "hand" ? true : [1, 2]}
           selectionOnDrag={mode === "select"}
           nodesDraggable={mode === "select" || mode === "note"}
-          panOnScroll={false}
-          zoomOnScroll={true}
+          panOnScroll={true}
+          zoomOnScroll={false}
+          zoomOnPinch={true}
+          connectionRadius={60}
+          connectionLineType="smoothstep"
+          connectionLineStyle={{
+            strokeWidth: 3,
+            stroke: "#7d71fe",
+            strokeDasharray: "6 4",
+          }}
         >
           <Background
             variant={BackgroundVariant.Dots}
@@ -554,13 +762,20 @@ function EditorInner({ onLogout }) {
           onAddNode={handleAddNode}
           onFitView={fitView}
           onSaveView={saveCurrentView}
+          onAutoLayout={autoLayout}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onSearch={() => setShowPalette(true)}
+          onHistory={() => setShowHistory(true)}
           sync={sync}
         />
 
         <div className="hint">
-          <kbd>V</kbd> select · <kbd>H</kbd> hand · <kbd>N</kbd> note ·{" "}
-          <kbd>C</kbd> condition · <kbd>+</kbd>/<kbd>−</kbd> zoom · click an
-          edge to insert · double-click a note / condition to edit.
+          <kbd>⌘K</kbd> search · <kbd>V</kbd> select · <kbd>H</kbd> hand ·{" "}
+          <kbd>N</kbd> note · <kbd>C</kbd> condition · <kbd>⌘Z</kbd> undo ·{" "}
+          two-finger drag pans · pinch zooms.
         </div>
       </div>
 
@@ -596,6 +811,29 @@ function EditorInner({ onLogout }) {
         />
       )}
 
+      {showPalette && (
+        <CommandPalette
+          nodes={nodes}
+          views={views}
+          onFocusNode={paletteFocusNode}
+          onOpenEvent={paletteOpenEvent}
+          onSwitchView={paletteSwitchView}
+          onClose={() => setShowPalette(false)}
+        />
+      )}
+
+      {showHistory && (
+        <HistoryPanel
+          history={history}
+          pointer={pointer}
+          onRestore={(idx) => {
+            restore(idx);
+            flashToast(`Restored — ${history[idx].label}`);
+          }}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
@@ -609,6 +847,7 @@ const NODE_TYPES = {
 
 function miniMapColor(node) {
   if (node?.type === "note") return "#f59e0b";
+  if (node?.type === "condition") return "#fb923c";
   const lane = node?.data?.lane;
   if (lane === "merchant") return "#7d71fe";
   if (lane === "shopper") return "#0d9488";
