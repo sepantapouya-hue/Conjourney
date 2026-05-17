@@ -16,6 +16,8 @@ import "@xyflow/react/dist/style.css";
 import StageNode from "./StageNode";
 import NoteNode from "./NoteNode";
 import ConditionNode from "./ConditionNode";
+import { LiveCursors, PresenceTracker } from "./LivePresence";
+import { presenceEnabled } from "./PresenceProvider";
 import Toolbar from "./Toolbar";
 import ViewsPanel from "./ViewsPanel";
 import NodeForm from "./NodeForm";
@@ -89,6 +91,7 @@ function EditorInner({ onLogout }) {
   const restoringRef = useRef(false);
 
   const skipReloadRef = useRef(false);
+  const canvasRef = useRef(null);
   const rf = useReactFlow();
 
   function flashToast(msg) {
@@ -707,6 +710,7 @@ function EditorInner({ onLogout }) {
       />
 
       <div
+        ref={canvasRef}
         className={`canvas mode-${mode} ${isConnecting ? "connecting" : ""}`}
       >
         <ReactFlow
@@ -754,7 +758,17 @@ function EditorInner({ onLogout }) {
             maskColor="rgba(125, 113, 254, 0.06)"
           />
           <Controls position="bottom-right" showInteractive={false} />
+          {presenceEnabled && <LiveCursors />}
         </ReactFlow>
+
+        {presenceEnabled && (
+          <PresenceTracker
+            canvasRef={canvasRef}
+            viewId={currentViewId}
+            viewName={currentView.name}
+            mode={mode}
+          />
+        )}
 
         <FloatingToolbar
           mode={mode}

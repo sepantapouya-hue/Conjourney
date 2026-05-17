@@ -488,6 +488,73 @@ body {
   letter-spacing: 0.01em;
 }
 
+/* ============== LIVE PRESENCE ============== */
+.live-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 9;
+  transition: transform 80ms linear;
+  will-change: transform;
+}
+.live-cursor svg {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(15, 15, 26, 0.25));
+}
+.live-cursor-name {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(15, 15, 26, 0.2);
+}
+
+.presence-cluster {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid var(--line);
+}
+.presence-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 2px solid var(--surface);
+  margin-left: -8px;
+  position: relative;
+  cursor: default;
+  user-select: none;
+  transition: transform 0.12s;
+}
+.presence-avatar:first-child {
+  margin-left: 0;
+}
+.presence-avatar:hover {
+  transform: translateY(-1px) scale(1.06);
+  z-index: 30 !important;
+}
+.presence-avatar.self {
+  box-shadow: 0 0 0 2px rgba(125, 113, 254, 0.6);
+}
+.presence-avatar.more {
+  background: var(--bg-soft) !important;
+  color: var(--ink-mute);
+  font-weight: 600;
+}
+
 /* ============== MAGNETIC CONNECTING STATE ============== */
 .canvas.connecting .stage-node,
 .canvas.connecting .condition-node {

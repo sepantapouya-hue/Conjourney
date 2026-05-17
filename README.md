@@ -113,6 +113,31 @@ Once either is connected, the floating-toolbar indicator switches from
 visitors fetch it on load. If Redis is ever unreachable, the app falls
 back to localStorage and the indicator shows **Offline**.
 
+## Multiplayer presence (Figma-style live cursors + avatars)
+
+Optional. When enabled, every visitor sees:
+
+- **Avatar bubbles** in the toolbar — one circle per online user with
+  their initials in their color. Hover for full name and the view they
+  are looking at.
+- **Live cursors** on the canvas — every other user's pointer is drawn
+  in flow coordinates (so it stays put as the canvas pans / zooms), with
+  a colored arrow and a name label.
+
+### Setup
+
+1. Sign up at [liveblocks.io](https://liveblocks.io) (free tier covers
+   up to 100 MAU).
+2. Create a project, copy the **Public API key** (starts with `pk_…`).
+3. In Vercel → **Settings** → **Environment Variables** add
+   `VITE_LIVEBLOCKS_PUBLIC_KEY` set to that key (apply to Production +
+   Preview).
+4. Redeploy. Open the site in two browsers — you'll see two avatars and
+   two cursors.
+
+Without the env var, the app runs in single-player mode (no avatars, no
+cursors, no Liveblocks network traffic).
+
 ## Note on password protection
 
 The password gate is **client-side only** — the bundle ships to every

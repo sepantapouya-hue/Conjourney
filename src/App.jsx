@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import AuthGate from "./components/AuthGate";
 import Editor from "./components/Editor";
+import PresenceProvider from "./components/PresenceProvider";
 
 const PASSWORD = "$$Conjourney$$";
 const STORAGE_KEY = "conjourney_auth_v1";
@@ -27,5 +28,9 @@ export default function App() {
   }
 
   if (!authed) return <AuthGate onSubmit={attempt} />;
-  return <Editor onLogout={logout} />;
+  return (
+    <PresenceProvider>
+      <Editor onLogout={logout} />
+    </PresenceProvider>
+  );
 }

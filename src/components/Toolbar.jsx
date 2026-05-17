@@ -1,5 +1,7 @@
 import { ALL_TYPES, TYPE_LABEL } from "../data/seed";
 import Logo from "./Logo";
+import { PresenceCluster } from "./LivePresence";
+import { presenceEnabled } from "./PresenceProvider";
 
 export default function Toolbar({
   views,
@@ -60,6 +62,7 @@ export default function Toolbar({
       </div>
 
       <div className="toolbar-right">
+        {presenceEnabled && <PresenceCluster />}
         <button type="button" className="btn-primary" onClick={onAddNode}>
           + Add node
         </button>
