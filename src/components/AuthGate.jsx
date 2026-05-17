@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Logo from "./Logo";
 
 export default function AuthGate({ onSubmit }) {
   const [pw, setPw] = useState("");
@@ -15,22 +16,7 @@ export default function AuthGate({ onSubmit }) {
       <div className="auth-grid" aria-hidden="true" />
       <div className="auth-card">
         <div className="auth-logo">
-          <svg viewBox="0 0 32 32" width="40" height="40" aria-hidden="true">
-            <defs>
-              <linearGradient id="lg" x1="0" x2="1" y1="0" y2="1">
-                <stop offset="0" stopColor="#7C5CFF" />
-                <stop offset="1" stopColor="#36D6C5" />
-              </linearGradient>
-            </defs>
-            <rect width="32" height="32" rx="8" fill="url(#lg)" />
-            <path
-              d="M21 11.5a6 6 0 1 0 0 9"
-              stroke="#fff"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
+          <Logo size={48} />
         </div>
         <div className="auth-eyebrow">Conjourney</div>
         <h1>The Convi user journey, mapped.</h1>

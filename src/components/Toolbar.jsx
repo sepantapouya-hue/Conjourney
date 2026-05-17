@@ -1,4 +1,5 @@
 import { ALL_TYPES, TYPE_LABEL } from "../data/seed";
+import Logo from "./Logo";
 
 export default function Toolbar({
   viewName,
@@ -17,22 +18,7 @@ export default function Toolbar({
     <header className="toolbar">
       <div className="toolbar-left">
         <div className="brand">
-          <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
-            <defs>
-              <linearGradient id="tg" x1="0" x2="1" y1="0" y2="1">
-                <stop offset="0" stopColor="#7C5CFF" />
-                <stop offset="1" stopColor="#36D6C5" />
-              </linearGradient>
-            </defs>
-            <rect width="32" height="32" rx="8" fill="url(#tg)" />
-            <path
-              d="M21 11.5a6 6 0 1 0 0 9"
-              stroke="#fff"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
+          <Logo size={28} />
           <div className="brand-text">
             <div className="brand-name">Conjourney</div>
             <div className="brand-sub">Convi user journey</div>
