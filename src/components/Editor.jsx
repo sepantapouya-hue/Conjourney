@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 
 import StageNode from "./StageNode";
 import NoteNode from "./NoteNode";
+import ConditionNode from "./ConditionNode";
 import Toolbar from "./Toolbar";
 import ViewsPanel from "./ViewsPanel";
 import NodeForm from "./NodeForm";
@@ -28,7 +29,7 @@ import {
   pushRemoteViews,
 } from "../lib/viewsApi";
 
-const CURRENT_KEY = "conjourney_current_v1";
+const CURRENT_KEY = "conjourney_current_v2";
 
 function makeDefaultView() {
   return {
@@ -175,6 +176,9 @@ function EditorInner({ onLogout }) {
       } else if (e.key === "n" || e.key === "N") {
         setMode("note");
         flashToast("Note mode — click anywhere on the canvas");
+      } else if (e.key === "c" || e.key === "C") {
+        setMode("condition");
+        flashToast("Condition mode — click canvas to drop a decision");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -209,9 +213,13 @@ function EditorInner({ onLogout }) {
   const onNoteDelete = useCallback(
     (id) => {
       setNodes((ns) => ns.filter((n) => n.id !== id));
+      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
     },
-    [setNodes],
+    [setNodes, setEdges],
   );
+
+  const onConditionChange = onNoteChange;
+  const onConditionDelete = onNoteDelete;
 
   // When entering edit mode by id, find the node and prefill the form
   useEffect(() => {
@@ -223,16 +231,22 @@ function EditorInner({ onLogout }) {
     setShowForm(true);
   }, [editingId]);
 
-  // Inject filters + callbacks into each node's data so the StageNode picks them up
+  // Inject filters + callbacks into each node's data so the components pick them up
   const renderedNodes = useMemo(() => {
     return nodes.map((n) => {
       if (n.type === "note") {
         return {
           ...n,
+          data: { ...n.data, onChange: onNoteChange, onDelete: onNoteDelete },
+        };
+      }
+      if (n.type === "condition") {
+        return {
+          ...n,
           data: {
             ...n.data,
-            onChange: onNoteChange,
-            onDelete: onNoteDelete,
+            onChange: onConditionChange,
+            onDelete: onConditionDelete,
           },
         };
       }
@@ -248,7 +262,16 @@ function EditorInner({ onLogout }) {
         },
       };
     });
-  }, [nodes, filters, onEventClick, onDeleteNode, onNoteChange, onNoteDelete]);
+  }, [
+    nodes,
+    filters,
+    onEventClick,
+    onDeleteNode,
+    onNoteChange,
+    onNoteDelete,
+    onConditionChange,
+    onConditionDelete,
+  ]);
 
   const onConnect = useCallback(
     (params) =>
@@ -303,22 +326,40 @@ function EditorInner({ onLogout }) {
     [nodes, setNodes, setEdges],
   );
 
-  // Note mode: click empty canvas to drop a sticky note at that point
+  // Note / Condition mode: click empty canvas to drop a node at that point
   const onPaneClick = useCallback(
     (e) => {
-      if (mode !== "note") return;
       const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      const id = uid("note");
-      setNodes((ns) => [
-        ...ns,
-        {
-          id,
-          type: "note",
-          position: { x: pos.x - 110, y: pos.y - 60 },
-          data: { text: "", color: "amber" },
-        },
-      ]);
-      flashToast("Note added — double-click to write");
+      if (mode === "note") {
+        const id = uid("note");
+        setNodes((ns) => [
+          ...ns,
+          {
+            id,
+            type: "note",
+            position: { x: pos.x - 110, y: pos.y - 60 },
+            data: { text: "", color: "amber" },
+          },
+        ]);
+        flashToast("Note added — double-click to write");
+      } else if (mode === "condition") {
+        const id = uid("cond");
+        setNodes((ns) => [
+          ...ns,
+          {
+            id,
+            type: "condition",
+            position: { x: pos.x - 140, y: pos.y - 80 },
+            data: {
+              label: "New condition?",
+              hint: "",
+              yesLabel: "Yes",
+              noLabel: "No",
+            },
+          },
+        ]);
+        flashToast("Condition added — connect Yes / No branches");
+      }
     },
     [mode, rf, setNodes],
   );
@@ -518,8 +559,8 @@ function EditorInner({ onLogout }) {
 
         <div className="hint">
           <kbd>V</kbd> select · <kbd>H</kbd> hand · <kbd>N</kbd> note ·{" "}
-          <kbd>+</kbd>/<kbd>−</kbd> zoom · click an edge to insert a node ·
-          double-click a note to edit.
+          <kbd>C</kbd> condition · <kbd>+</kbd>/<kbd>−</kbd> zoom · click an
+          edge to insert · double-click a note / condition to edit.
         </div>
       </div>
 
@@ -560,7 +601,11 @@ function EditorInner({ onLogout }) {
   );
 }
 
-const NODE_TYPES = { stage: StageNode, note: NoteNode };
+const NODE_TYPES = {
+  stage: StageNode,
+  note: NoteNode,
+  condition: ConditionNode,
+};
 
 function miniMapColor(node) {
   if (node?.type === "note") return "#f59e0b";

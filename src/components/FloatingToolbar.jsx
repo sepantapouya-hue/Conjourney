@@ -58,6 +58,26 @@ const TOOLS = [
       </svg>
     ),
   },
+  {
+    id: "condition",
+    label: "Condition (C) — click canvas to drop",
+    shortcut: "C",
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 2 22 12 12 22 2 12z" />
+      </svg>
+    ),
+  },
 ];
 
 export default function FloatingToolbar({

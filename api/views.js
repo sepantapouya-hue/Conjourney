@@ -6,7 +6,7 @@
 // vars automatically. Without those, the route returns 503 and the
 // client gracefully falls back to localStorage.
 
-const KEY = "conjourney:views:v1";
+const KEY = "conjourney:views:v2";
 
 function kvConfigured() {
   return Boolean(

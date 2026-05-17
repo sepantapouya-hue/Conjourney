@@ -242,6 +242,21 @@ export const initialNodes = [
     ],
   }),
 
+  // Conditional gate — only paid-plan merchants can publish the widget.
+  {
+    id: "6c",
+    type: "condition",
+    position: { x: LANE_X.merchant, y: 0 }, // set in layout pass
+    data: {
+      lane: "merchant",
+      label: "Is the merchant on a paid plan?",
+      hint:
+        "Free-plan merchants can't enable the widget. They're routed back to the upgrade banner until they upgrade.",
+      yesLabel: "Paid plan",
+      noLabel: "Free plan",
+    },
+  },
+
   stage(7, "merchant", 6, {
     when: "Widget enabled",
     title: "🎉 Widget goes live",
@@ -705,27 +720,84 @@ export const initialNodes = [
   }),
 ];
 
-// --- Layout pass: stack stages vertically with room for each card's events.
-const Y_START = 40;
-const BASE_H = 210; // header + desc + actions
-const EV_H = 38; // per event row
-const GAP = 96; // vertical breathing room between cards
+// --- Layout pass: stack vertically with enough room that no card overlaps
+// the next one, regardless of how many events it contains.
+const Y_START = 60;
+const STAGE_BASE_H = 280; // header + desc + actions buffer for a stage card
+const STAGE_EV_H = 44; // per event row inside a stage card
+const COND_H = 220; // condition node total height
+const GAP = 140; // breathing room between cards
 {
   let cursor = Y_START;
   for (const node of initialNodes) {
-    const evCount = node.data.events?.length ?? 0;
-    node.position = { x: LANE_X[node.data.lane], y: cursor };
-    cursor += BASE_H + evCount * EV_H + GAP;
+    const lane = node.data.lane || "merchant";
+    node.position = { x: LANE_X[lane], y: cursor };
+    if (node.type === "condition") {
+      cursor += COND_H + GAP;
+    } else {
+      const evCount = node.data.events?.length ?? 0;
+      cursor += STAGE_BASE_H + evCount * STAGE_EV_H + GAP;
+    }
   }
 }
 
-export const initialEdges = initialNodes.slice(1).map((n, i) => ({
-  id: `e${i + 1}-${i + 2}`,
-  source: String(i + 1),
-  target: String(i + 2),
+// --- Edges: connect each stage to the next, except where the condition
+// branches the flow. Stage 6 → condition; condition (yes) → stage 7;
+// condition (no) → back to stage 6 (loop, until they upgrade).
+const _stageSeq = initialNodes
+  .filter((n) => n.type !== "condition")
+  .map((n) => n.id);
+
+const _baseEdgeStyle = { strokeWidth: 2 };
+
+export const initialEdges = [];
+for (let i = 0; i < _stageSeq.length - 1; i++) {
+  const src = _stageSeq[i];
+  const tgt = _stageSeq[i + 1];
+  if (src === "6" && tgt === "7") continue; // routed through 6c instead
+  initialEdges.push({
+    id: `e-${src}-${tgt}`,
+    source: src,
+    target: tgt,
+    type: "smoothstep",
+    style: _baseEdgeStyle,
+  });
+}
+
+initialEdges.push({
+  id: "e-6-6c",
+  source: "6",
+  target: "6c",
   type: "smoothstep",
-  animated: false,
-}));
+  style: _baseEdgeStyle,
+});
+initialEdges.push({
+  id: "e-6c-7",
+  source: "6c",
+  sourceHandle: "yes",
+  target: "7",
+  type: "smoothstep",
+  label: "Paid plan ✓ publish allowed",
+  style: { stroke: "#16a34a", strokeWidth: 2 },
+  labelStyle: { fill: "#15803d", fontWeight: 700, fontSize: 11 },
+  labelBgStyle: { fill: "#dcfce7" },
+  labelBgPadding: [6, 4],
+  labelBgBorderRadius: 6,
+});
+initialEdges.push({
+  id: "e-6c-6",
+  source: "6c",
+  sourceHandle: "no",
+  target: "6",
+  type: "smoothstep",
+  label: "Free plan ✗ blocked from publishing",
+  animated: true,
+  style: { stroke: "#dc2626", strokeWidth: 2, strokeDasharray: "6 4" },
+  labelStyle: { fill: "#b91c1c", fontWeight: 700, fontSize: 11 },
+  labelBgStyle: { fill: "#fee2e2" },
+  labelBgPadding: [6, 4],
+  labelBgBorderRadius: 6,
+});
 
 export const TYPE_LABEL = {
   email: "Email",

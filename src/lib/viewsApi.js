@@ -1,7 +1,7 @@
 // Client wrapper for the /api/views serverless endpoint.
 // Always writes to localStorage as a fallback / offline cache.
 
-const LOCAL_KEY = "conjourney_views_v1";
+const LOCAL_KEY = "conjourney_views_v2";
 
 export function loadLocal() {
   try {
