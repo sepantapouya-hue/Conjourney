@@ -89,19 +89,29 @@ vercel --prod
 
 By default the app runs in **Local-only** mode — views persist in the
 browser's localStorage. To share views across all users (everyone who
-knows the password sees the same map), connect a **Vercel KV** store:
+knows the password sees the same map), connect a Redis store on Vercel.
+The serverless function at `/api/views` auto-detects either backend:
 
-1. Open the Vercel project → **Storage** → **Create** → **KV**.
-2. Connect the store to this project (Vercel injects two env vars:
-   `KV_REST_API_URL` and `KV_REST_API_TOKEN`).
-3. Redeploy. The serverless function at `/api/views` will start using
-   KV automatically, and the floating toolbar status will switch from
-   **Local only** → **Shared**.
+### Option 1 — Redis (Redis Inc.) on Vercel Marketplace
 
-When connected, every `Save view`, `Create`, `Rename`, `Duplicate`, and
-`Delete` action pushes the entire views array to KV. New visitors fetch
-it on load. If KV is ever unreachable, the app falls back to localStorage
-and the indicator shows **Offline**.
+1. Vercel project → **Storage** → **Create** → **Redis** (the official
+   Redis offering, e.g. *redis-carmine-tree*).
+2. Connect to this project. Vercel injects `REDIS_URL`.
+3. Redeploy. The function will use the `redis` npm client over TCP.
+
+### Option 2 — Upstash Redis / Vercel KV
+
+1. Vercel project → **Storage** → **Create** → **Upstash Redis**.
+2. Connect to this project. Vercel injects `KV_REST_API_URL` +
+   `KV_REST_API_TOKEN`.
+3. Redeploy. The function will use the Upstash HTTP REST API (no extra
+   dependencies at runtime).
+
+Once either is connected, the floating-toolbar indicator switches from
+**Local only** → **Shared**. Every `Save view`, `Create`, `Rename`,
+`Duplicate`, and `Delete` action pushes the views array to Redis; new
+visitors fetch it on load. If Redis is ever unreachable, the app falls
+back to localStorage and the indicator shows **Offline**.
 
 ## Note on password protection
 
