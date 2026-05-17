@@ -922,406 +922,1314 @@ function _filterByLanes(allowed) {
   return { nodes: placed, edges };
 }
 
-const _customer = _filterByLanes(["shopper", "both"]);
+const _customerLane = _filterByLanes(["shopper", "both"]);
 
-// --- Merchant view = state matrix (A1..A8 + B1..B8) ---------------------
-// Replaces the linear merchant lane with the 16 sub-states a merchant can
-// be in, organized as a 4×4 grid: row = phase (before/after first convo
-// crossed with plan), column = (widget, embed) switch combo.
+// =========================================================================
+//  STATE-GROUPED FLOW VIEWS — Merchant + Customer
+//  Each view is a single column of stage cards organized under section
+//  headers (STATE 0, STATE 1, …). Headers are pure visual dividers; the
+//  flow edges connect stage → stage only.
+// =========================================================================
 
-const MERCHANT_STATES = [
-  // Row 0 — Before any conversation, Free plan
-  {
-    stateId: "A1",
-    title: "Day zero",
-    plan: "free", widget: false, embed: false, hasConvos: false,
-    home: "Free home",
-    activation: "JUST_INSTALLED → PREVIEW_READY",
-    reason: "PLAN",
-    summary:
-      "What every merchant sees right after install, while the catalog is being indexed.",
-    onScreen: [
-      "Onboarding Discount Banner (incomplete)",
-      "Launch Progress checklist",
-      "Import In Progress banner with %",
-      "Import Health card (sync status per resource)",
-      "Storefront Status: 'Free plan — upgrade to go live'",
-      "Booking Demo CTA",
-    ],
-    emails: ["Welcome — Synced (once crawl finishes)", "Train Nudge"],
-    next: "Finish wizard, train the AI with policies, upgrade to a paid plan.",
-  },
-  {
-    stateId: "A2",
-    title: "Free + Widget ON + Embed OFF",
-    plan: "free", widget: true, embed: false, hasConvos: false,
-    home: "Free home",
-    activation: "PREVIEW_READY",
-    reason: "PLAN",
-    summary:
-      "Edge case — reached via downgrade or internal override. Plan check blocks runtime render.",
-    onScreen: ["Same Free-home banners as A1"],
-    emails: [],
-    next: "Upgrade to a paid plan to actually publish.",
-  },
-  {
-    stateId: "A3",
-    title: "Free + Embed ON + Widget OFF",
-    plan: "free", widget: false, embed: true, hasConvos: false,
-    home: "Free home",
-    activation: "PREVIEW_READY",
-    reason: "PLAN",
-    summary:
-      "Activated the theme app embed before subscribing. Without an enabled widget there's nothing to render anyway.",
-    onScreen: ["Same Free-home banners as A1"],
-    emails: [],
-    next: "Upgrade plan, then enable a widget.",
-  },
-  {
-    stateId: "A4",
-    title: "Free + all switches ON (theoretical)",
-    plan: "free", widget: true, embed: true, hasConvos: false,
-    home: "Free home",
-    activation: "PREVIEW_READY",
-    reason: "PLAN",
-    summary:
-      "Should not occur in practice — the plan gate blocks widget activation. If reached, the widget is suppressed at runtime.",
-    onScreen: ["Same Free-home banners as A1"],
-    emails: [],
-    next: "Upgrade plan to actually serve the widget.",
-  },
+const FLOW_X = 80;
 
-  // Row 1 — Before any conversation, Paid plan
-  {
-    stateId: "A5",
-    title: "Just upgraded",
-    plan: "paid", widget: false, embed: false, hasConvos: false,
-    home: "Paid Without Conversation",
-    activation: "PREVIEW_READY",
-    reason: "WIDGET",
-    summary:
-      "Bought a plan but hasn't enabled any widget surface yet.",
-    onScreen: [
-      "Launch Progress checklist",
-      "Import Health card",
-      "Storefront Status: 'Plan active — enable a widget'",
-      "Booking Demo CTA",
-    ],
-    emails: [],
-    next: "Turn on the bubble / ask-AI / FAQ under /publish/widgets.",
-  },
-  {
-    stateId: "A6",
-    title: "Widget ON, embed pending",
-    plan: "paid", widget: true, embed: false, hasConvos: false,
-    home: "Paid Without Conversation",
-    activation: "PREVIEW_READY",
-    reason: "EMBED",
-    summary:
-      "Most common pre-launch state. Plan + widget are good, but the Shopify theme has no app embed block.",
-    onScreen: [
-      "Launch Progress (one step red — 'activate app embed')",
-      "App Embed Status banner (warning) with 'Activate' deep-link",
-      "Import Health card",
-      "Storefront Status: prompts embed activation",
-    ],
-    emails: [],
-    next: "Click 'Activate' — opens the Shopify theme editor on the right anchor.",
-  },
-  {
-    stateId: "A7",
-    title: "Embed ON, widget OFF",
-    plan: "paid", widget: false, embed: true, hasConvos: false,
-    home: "Paid Without Conversation",
-    activation: "PREVIEW_READY",
-    reason: "WIDGET",
-    summary:
-      "Theme has the embed block but every widget toggle inside Convi is off.",
-    onScreen: [
-      "Launch Progress (widget step incomplete)",
-      "Import Health card",
-      "Storefront Status: 'Enable a widget to go live'",
-    ],
-    emails: [],
-    next: "Switch on at least one widget (Bubble / Ask-AI / FAQ).",
-  },
-  {
-    stateId: "A8",
-    title: "🎉 Just live",
-    plan: "paid", widget: true, embed: true, hasConvos: false,
-    home: "Paid Without Conversation",
-    activation: "VERIFIED_LIVE",
-    reason: "NONE",
-    summary:
-      "All three gates pass. The home celebrates — even with zero conversations.",
-    onScreen: [
-      "🟢 Celebration 'Just Live' banner with 3 green badges",
-      "Primary CTA: 'Start test conversation' → opens storefront",
-      "Launch Progress (all green)",
-      "Storefront Status: live",
-    ],
-    emails: ["Widget Live — '🎉 Convi is live on {your-shop-domain}'"],
-    next: "Drive a real shopper to the widget. First message → moves to B8.",
-  },
+// Heights used by the layout pass for this flow. Stage heights vary per
+// event count; header / email / modal cards are uniform.
+const FLOW_BASE_H = 210; // stage base
+const FLOW_EV_H = 44; // per event
+const FLOW_HEADER_H = 130;
+const FLOW_GAP = 90;
 
-  // Row 2 — After first conversation, Free plan (downgraded with history)
-  {
-    stateId: "B1",
-    title: "Downgraded — history remains",
-    plan: "free", widget: false, embed: false, hasConvos: true,
-    home: "With Conversation",
-    activation: "varies",
-    reason: "PLAN",
-    summary:
-      "Was paid, has chat history, but plan lapsed. New conversations are blocked by the plan gate.",
-    onScreen: [
-      "Live Banner (current activity, if any)",
-      "No 'Current Plan' card (free)",
-      "No paid-only Live Activity feed",
-      "Overview KPI grid (historical numbers)",
-      "Recommendations + Engagement push to re-subscribe",
-      "Booking Demo CTA",
-    ],
-    emails: [],
-    next: "Re-upgrade to resume serving shoppers.",
-  },
-  {
-    stateId: "B2",
-    title: "Free + Widget ON + had convs",
-    plan: "free", widget: true, embed: false, hasConvos: true,
-    home: "With Conversation",
-    activation: "varies",
-    reason: "PLAN",
-    summary:
-      "Same effective behaviour as B1 — paid-only sections hidden, runtime widget blocked by plan gate.",
-    onScreen: ["Same as B1"],
-    emails: [],
-    next: "Re-upgrade.",
-  },
-  {
-    stateId: "B3",
-    title: "Free + Embed ON + had convs",
-    plan: "free", widget: false, embed: true, hasConvos: true,
-    home: "With Conversation",
-    activation: "varies",
-    reason: "PLAN",
-    summary: "Same behaviour as B1.",
-    onScreen: ["Same as B1"],
-    emails: [],
-    next: "Re-upgrade.",
-  },
-  {
-    stateId: "B4",
-    title: "Free + all on + had convs",
-    plan: "free", widget: true, embed: true, hasConvos: true,
-    home: "With Conversation",
-    activation: "varies",
-    reason: "PLAN",
-    summary: "Same behaviour as B1 — plan gate wins regardless of toggles.",
-    onScreen: ["Same as B1"],
-    emails: [],
-    next: "Re-upgrade.",
-  },
+function _h(id, title, subtitle, tone = "primary", kicker) {
+  return {
+    _kind: "header",
+    id,
+    title,
+    subtitle,
+    tone,
+    kicker,
+  };
+}
 
-  // Row 3 — After first conversation, Paid plan
-  {
-    stateId: "B5",
-    title: "Disabled after going live",
-    plan: "paid", widget: false, embed: false, hasConvos: true,
-    home: "With Conversation",
-    activation: "PREVIEW_READY",
-    reason: "WIDGET",
-    summary:
-      "Was live; disabled the widget AND removed the embed. Historical conversations remain.",
-    onScreen: [
-      "Live Banner (zero active shoppers)",
-      "Current Plan card",
-      "Live Activity Feed (past events)",
-      "Needs Attention — flags disabled widget / missing embed",
-      "Overview KPI grid",
-      "Recommendations push to re-enable",
+function _s(id, title, opts) {
+  return {
+    _kind: "stage",
+    id,
+    title,
+    when: opts.when || "",
+    where: opts.where || "",
+    desc: opts.desc || "",
+    events: opts.events || [],
+    n: opts.n || id,
+  };
+}
+
+function _ev(type, icon, title, subtitle, detail, extra = {}) {
+  return { type, icon, title, subtitle, detail, ...extra };
+}
+
+// --- MERCHANT FLOW (state-grouped) ----------------------------------------
+
+const _MERCHANT_FLOW_SPEC = [
+  _h(
+    "h0",
+    "STATE 0 — Pre-install",
+    "Shopify App Store. Merchant is not yet a Convi user.",
+    "muted",
+    "Section 0",
+  ),
+  _s("s0", "Pre-install · Shopify side", {
+    when: "Before Convi exists for this shop",
+    where: "Shopify App Store · OAuth screen",
+    desc:
+      'The merchant sees only Shopify-controlled surfaces. No Convi-side messaging until the OAuth callback completes.',
+    events: [
+      _ev(
+        "backend",
+        "🛒",
+        "App Store listing page",
+        "Marketing copy — conviapp.com / convi-website territory",
+        "Not in this codebase. The merchant browses the listing and clicks Install.",
+      ),
+      _ev(
+        "backend",
+        "🔐",
+        "Shopify OAuth consent screen",
+        "Access scopes: products, customers, orders, fulfillments, …",
+        "Shopify shows the standard consent screen. Convi has no say in its content.",
+      ),
     ],
-    emails: [],
-    next: "Re-enable a widget and re-activate the embed.",
-  },
-  {
-    stateId: "B6",
-    title: "Widget on, embed removed",
-    plan: "paid", widget: true, embed: false, hasConvos: true,
-    home: "With Conversation",
-    activation: "PREVIEW_READY",
-    reason: "EMBED",
-    summary:
-      "Same effective behaviour as B5 — widget toggle is on, but the storefront has no embed.",
-    onScreen: [
-      "Needs Attention surfaces 'Activate the app embed'",
-      "Otherwise same With-Conversation sections as B5",
+  }),
+
+  _h(
+    "h1",
+    "STATE 1 — Install moment (t=0)",
+    "OAuth callback completes. Everything below happens in the same instant.",
+    "primary",
+    "Section 1",
+  ),
+  _s("s1.1", "Backend side effects on OAuth callback", {
+    when: "t = 0",
+    where: "Convi backend (invisible to merchant)",
+    desc:
+      "Every install seeds the database with default rows and queues Celery tasks for crawling, Intercom syncing, and webhook registration.",
+    events: [
+      _ev(
+        "backend",
+        "DB",
+        "Shop record created",
+        "app_embed_enabled=False · chatbot_enabled=True · faq_widget_enabled=False · widget_enabled=False · ask_ai_button_enabled=False",
+        "All four user-visible switches default OFF except the chatbot engine itself.",
+      ),
+      _ev(
+        "backend",
+        "✉",
+        "NotificationSettings row",
+        "Seeded with Shopify's contact_email for the shop",
+        "Used as the recipient for all admin / merchant emails.",
+      ),
+      _ev(
+        "backend",
+        "🎨",
+        "WidgetSettings row",
+        "Brand defaults: colors, copy, suggested prompts",
+        "Editable later under /publish/customize.",
+      ),
+      _ev(
+        "backend",
+        "🛠",
+        "ShopAbility rows",
+        "ShopAbilityService.update_or_create_all — which AI tools the shop is permitted to use",
+        "Tools default to a curated baseline. Editable internally.",
+      ),
+      _ev(
+        "backend",
+        "🌐",
+        "WebSearchConfiguration row",
+        "Defaults for the web-search tool",
+        "Disabled by default; merchant can enable in settings.",
+      ),
+      _ev(
+        "backend",
+        "🧠",
+        "MerchantAITrainingCustomization row",
+        "Empty container filled in by /train",
+        "Holds custom FAQs, policies, tone-of-voice overrides.",
+      ),
+      _ev(
+        "backend",
+        "🌍",
+        "sync_translations_task (Celery)",
+        "Pulls the shop's Shopify locales into Convi",
+        "Runs immediately on the install queue.",
+      ),
+      _ev(
+        "backend",
+        "📡",
+        "register_shop_locales_webhooks_task",
+        "Subscribes to shop-update / locales-create / locales-update",
+        "Keeps locale config in sync over time.",
+      ),
+      _ev(
+        "backend",
+        "⏱",
+        "post_installation_support_related_actions_task (+60s)",
+        "Intercom integration",
+        "Runs 60 seconds after install so the Intercom contact reflects the new shop.",
+      ),
+      _ev(
+        "backend",
+        "🕷",
+        "store_storefront_content_task",
+        "Crawls Shopify catalog → indexes into Pinecone",
+        "On INSTALLATION_QUEUE. Drives the Import Health card.",
+      ),
+      _ev(
+        "backend",
+        "📈",
+        "Three Intercom syncs at +60s",
+        "update_intercom_contact_app_subscription_attributes · update_shop_post_installation_intercom_attributes · update_intercom_contact_overall_info_attributes",
+        "Internal Convi ops visibility comes via Intercom. No Slack hook is defined.",
+      ),
     ],
-    emails: [],
-    next: "Re-activate the embed in the Shopify theme editor.",
-  },
-  {
-    stateId: "B7",
-    title: "Embed on, all widgets off",
-    plan: "paid", widget: false, embed: true, hasConvos: true,
-    home: "With Conversation",
-    activation: "PREVIEW_READY",
-    reason: "WIDGET",
-    summary: "Inverse of B6 — embed present, widget toggles all off.",
-    onScreen: [
-      "Needs Attention surfaces 'Enable a widget'",
-      "Otherwise same With-Conversation sections as B5",
+  }),
+  _s("s1.2", "Lands on Convi admin home (Free home variant)", {
+    when: "t = 0 + ~1s redirect",
+    where: "/",
+    desc:
+      "Because conversations=0 and plan=free, the home router lands on the Free home screen (covered in detail in STATE 2 below).",
+    events: [
+      _ev(
+        "backend",
+        "🧭",
+        "Home router decision",
+        "src/features/home — picks the Free screen",
+        "useLaunchStatus() returns JUST_INSTALLED / PREVIEW_READY depending on crawl progress.",
+      ),
     ],
-    emails: [],
-    next: "Switch a widget back on.",
-  },
-  {
-    stateId: "B8",
-    title: "Fully operational steady state",
-    plan: "paid", widget: true, embed: true, hasConvos: true,
-    home: "With Conversation",
-    activation: "VERIFIED_LIVE",
-    reason: "NONE",
-    summary:
-      "Live banner shows active shoppers + avg AI reply time (10s poll). KPIs, activity feed, plan card with next-tier upgrade.",
-    onScreen: [
-      "Live Banner (active shoppers + avg AI reply)",
-      "Limit Reached banner if usage ≥ limit (critical)",
-      "Early Warning banner at ~80% (dismissible)",
-      "Needs Attention list",
-      "Overview KPI grid + analytics cards",
-      "Current Plan card with upgrade",
-      "Live Activity Feed (AI / handover / negative-feedback)",
-      "Recommendations + Engagement + Booking Demo",
+  }),
+  _h(
+    "h2",
+    "STATE 2 — Free plan, post-install",
+    "Most merchants spend hours or days here. All four sub-states render the Free home screen with different banner combinations.",
+    "primary",
+    "Section 2",
+  ),
+  _s("s2.1", "Free + catalog still indexing + no policies imported", {
+    when: "First 5–15 minutes after install",
+    where: "/ · Free home · src/features/home/screens/free",
+    desc:
+      "Page title: time-of-day greeting (Good morning / afternoon / evening, {ShopName}). Subtitle: home.subtitle_launch — 'Get your AI agent live.'",
+    events: [
+      _ev(
+        "banner",
+        "🎁",
+        "Onboarding Discount Banner — Incomplete",
+        "Tone: info · home.onboarding_discount_banner.incomplete_*",
+        "Stays on Incomplete copy until all three onboarding checks pass: data sync complete, playground tested, pre-flight checks run.",
+      ),
+      _ev(
+        "banner",
+        "⏳",
+        "Failure Mode Banner — Import In Progress",
+        "Tone: info · dismissible (BANNERS.IMPORT_IN_PROGRESS_DISMISSED)",
+        "home.failure_mode_banner.import_in_progress_* — body interpolates % completion.",
+      ),
+      _ev(
+        "banner",
+        "✅",
+        "Launch Progress checklist",
+        "Catalog · Policies · Trained · Playground · Pre-flight · Plan · Widget · Embed",
+        "Each step shows Pending / In progress / Done.",
+      ),
+      _ev(
+        "banner",
+        "📊",
+        "Import Health card",
+        "Per-resource: Products X/Y · Pages X/Y · Articles X/Y · Collections X/Y · Policies X/Y",
+        "Drives the Content Health metrics on /train later.",
+      ),
+      _ev(
+        "banner",
+        "🛍️",
+        "Storefront Status card (Free variant)",
+        "'Free plan — upgrade to go live'",
+        "Routes to /settings/plan.",
+      ),
+      _ev(
+        "banner",
+        "📅",
+        "Booking Demo Card",
+        "home.booking_demo_banner.* · persistent CTA",
+        "Always-on call to book a sales call.",
+      ),
     ],
-    emails: [
-      "New Customer Conversation (after first 2 msgs)",
-      "Handover (escalation / AI gave up)",
-      "Session Summary (each resolved chat)",
-      "Weekly Value Report",
+  }),
+  _s("s2.2", "Free + catalog indexed but policies missing", {
+    when: "After the catalog crawl finishes (minutes to hours later)",
+    where: "/ · Free home",
+    desc:
+      "The most common state after the catalog finishes. Shopify policies (return / shipping / privacy / refund / terms) often fail to sync if the merchant hasn't published them on the store.",
+    events: [
+      _ev(
+        "banner",
+        "⚠",
+        "Failure Mode Banner — Missing Policies",
+        "Tone: warning · dismissible (BANNERS.MISSING_POLICIES_DISMISSED)",
+        "Trigger: mainResourcesSynced === true && policies.count === 0 && !dismissed",
+      ),
+      _ev(
+        "banner",
+        "🧪",
+        "Embedded Playground grid",
+        "Trigger: isPastTrainStep && preflight not all passed",
+        "Inline 'ask the AI' surface on the home page, below the Storefront Status card.",
+      ),
+      _ev(
+        "banner",
+        "🎁",
+        "Onboarding Discount Banner — Incomplete (still)",
+        "Until all three onboarding checks pass",
+        "Same as in 2.1.",
+      ),
     ],
-    next: "Watch usage caps; optionally upgrade plan tier as volume grows.",
-  },
+  }),
+  _s("s2.3", "Free + everything indexed + all onboarding complete", {
+    when: "After they finish training, run pre-flight, etc.",
+    where: "/ · Free home",
+    desc:
+      "The merchant has done everything except buy a plan. The discount banner flips to Complete state with a live promo code.",
+    events: [
+      _ev(
+        "banner",
+        "🎉",
+        "Onboarding Discount Banner — Complete",
+        "Tone: success · home.onboarding_discount_banner.complete_*",
+        "Three bullet perks (complete_perk_1/2/3). Action button: 'Get {discount}% off for {X} months' — applies promo code free-trial-100 to the first paid plan they buy.",
+      ),
+    ],
+  }),
+  _s("s2.4", "Free + everything complete + discount banner dismissed", {
+    when: "After they dismiss the discount banner",
+    where: "/ · Free home",
+    desc:
+      "Plain home with home.subtitle_launch subtitle. Launch Progress + Storefront Status still push the plan upgrade.",
+    events: [
+      _ev(
+        "banner",
+        "ℹ",
+        "Plain Free home (no celebratory banners)",
+        "Launch Progress + Storefront Status still push upgrade",
+        "Failure-mode banners are also gone.",
+      ),
+    ],
+  }),
+  _s("s2-email1", "Email · Welcome — Synced", {
+    when: "When catalog crawl completes (between 2.1 → 2.2)",
+    where: "LifecycleEmailSenderService.send_welcome_synced()",
+    desc:
+      "First lifecycle email the merchant ever receives. Body contains the indexed product count + knowledge item count and links to /train.",
+    events: [
+      _ev(
+        "email",
+        "✉",
+        "Welcome — Synced",
+        "Subject: Welcome to Convi — your AI agent is ready to train",
+        "Body: count of indexed products + knowledge items, link back to the training dashboard.",
+      ),
+    ],
+  }),
+  _s("s2-email2", "Email · Train Nudge", {
+    when: "Dispatched after Welcome by dispatch_lifecycle_emails_task",
+    where: "LifecycleEmailSenderService.send_train_nudge()",
+    desc:
+      "Second lifecycle email; pushes the merchant toward enabling the widget.",
+    events: [
+      _ev(
+        "email",
+        "👉",
+        "Train Nudge",
+        "Subject: Your AI agent is waiting — 5 minutes to launch",
+        "Sender service: LifecycleEmailSenderService.send_train_nudge()",
+      ),
+    ],
+  }),
+  _s("s2-modal", "Modal · Permission Modal (Free tries paid feature)", {
+    when: "Whenever they tap a paid-only feature while on Free",
+    where: "Anywhere a paid feature lives",
+    desc: "Routes them to /settings/plan.",
+    events: [
+      _ev(
+        "modal",
+        "🚫",
+        "Permission Modal",
+        "permission.permission_modal_title / _description",
+        "Pops up with an upgrade CTA. Closes by clicking 'See plans' (→ /settings/plan) or dismissing.",
+      ),
+    ],
+  }),
+  _s("s2-pricing", "/settings/plan · Welcome Offer Banner (within 7 days)", {
+    when: "Within 7 days of install",
+    where: "/settings/plan",
+    desc: "Pricing page surfaces a 7-day countdown timer urging early upgrade.",
+    events: [
+      _ev(
+        "banner",
+        "⏱",
+        "Welcome Offer Banner",
+        "pricing.welcome_offer_banner.title / .description",
+        "Includes the Timer component (7-day countdown). Trigger: now - lastInstallTime < 7 days. Dismissible.",
+      ),
+      _ev(
+        "banner",
+        "💳",
+        "Pricing tier cards",
+        "Monthly / annual toggle",
+        "Standard tier comparison.",
+      ),
+    ],
+  }),
+
+  _h(
+    "h3",
+    "STATE 3 — Paid plan, just upgraded, nothing live yet",
+    "Plan purchase succeeds via Shopify's hosted checkout. Home router now picks Paid Without Conversation screen.",
+    "primary",
+    "Section 3",
+  ),
+  _s("s3.1", "Paid + Widget OFF + Embed OFF", {
+    when: "Right after plan purchase",
+    where: "/ · Paid Without Conversation · src/features/home/screens/paid-without-conversation",
+    desc:
+      "Page subtitle: home.subtitle_launch ('Get your AI agent live.'). Most early checklist items are now green (synced, trained, plan upgraded). Two still red: widget enabled, app embed activated.",
+    events: [
+      _ev(
+        "banner",
+        "✅",
+        "Launch Progress checklist",
+        "Two items red: widget, app embed",
+        "Synced, trained, plan upgraded all green.",
+      ),
+      _ev(
+        "banner",
+        "📊",
+        "Import Health card",
+        "Likely fully green by now",
+        "All sub-resources should be done indexing.",
+      ),
+      _ev(
+        "banner",
+        "🛍️",
+        "Storefront Status card (Paid variant)",
+        "Points to /publish/widgets",
+        "isPaid={true} variant.",
+      ),
+      _ev(
+        "banner",
+        "📅",
+        "Booking Demo Card",
+        "Persistent",
+        "Same as always.",
+      ),
+    ],
+  }),
+  _s("s3.2", "Paid + Widget ON + Embed OFF", {
+    when: "Toggled the bubble (or ask-AI / FAQ) on under /publish/widgets",
+    where: "/ · Paid Without Conversation · plus /publish/widgets",
+    desc: "Launch Progress widget step now green; app embed step still red.",
+    events: [
+      _ev(
+        "banner",
+        "🧩",
+        "App Embed Status Banner — warning",
+        "publish.widgets.app_embed_title_off / _description_off",
+        "Action button 'Activate' deep-links into the Shopify theme editor via useAppEmbedInfo().activationDeepLink.",
+      ),
+    ],
+  }),
+  _s("s3.3", "Paid + Widget OFF + Embed ON", {
+    when: "They added the app embed block before flipping the widget toggle",
+    where: "/ · Paid Without Conversation",
+    desc:
+      "Rare path. Home looks like 3.1 with the embed step green and the widget step red.",
+    events: [
+      _ev(
+        "banner",
+        "🧩",
+        "App Embed Status Banner — success",
+        "publish.widgets.app_embed_title_on / _description_on",
+        "Green tone — embed is good. Just the widget toggle that's blocking publish.",
+      ),
+    ],
+  }),
+  _s("s3.4", "🎉 Paid + Widget ON + Embed ON, but zero conversations", {
+    when: "Both switches just flipped on",
+    where: "/ · Paid Without Conversation",
+    desc:
+      "The 'Just Live' moment. useLaunchStatus() flips to VERIFIED_LIVE. Page subtitle: home.subtitle_just_live — 'Convi is live. Send a test message.'",
+    events: [
+      _ev(
+        "banner",
+        "🟢",
+        "Celebration Banner / 'Just Live'",
+        "Tone: success · home.just_live.title / .subtitle",
+        "Green Card background with three green badges: Plan active ✓ · Bubble widget active ✓ · App embed active ✓. Primary CTA: home.just_live.start_test_conversation → opens storefront in a new tab.",
+        { quote: "Convi is live. Send a test message." },
+      ),
+      _ev(
+        "banner",
+        "✅",
+        "Launch Progress (all green)",
+        "Every checklist item complete",
+        "Visual signal that pre-launch is done.",
+      ),
+      _ev(
+        "banner",
+        "🛍️",
+        "Storefront Status (live state)",
+        "Confirms the widget is rendering on the storefront",
+        "isPaid + widget + embed all true.",
+      ),
+    ],
+  }),
+  _s("s3-email", "Email · Widget Live (sent at the Just-Live moment)", {
+    when: "When widget + embed both flip ON",
+    where: "LifecycleEmailSenderService.send_widget_live()",
+    desc: "Storefront link + what the widget can now do + settings link.",
+    events: [
+      _ev(
+        "email",
+        "🚀",
+        "Widget Live",
+        "Subject: 🎉 Convi is live on {shop_domain}",
+        "Sender: LifecycleEmailSenderService.send_widget_live()",
+      ),
+    ],
+  }),
+
+  _h(
+    "h4",
+    "STATE 4 — Live, first shopper arrives",
+    "Backend signal chat_session_first_2_messages_added_signal fires once a new chat reaches 2 shopper messages.",
+    "primary",
+    "Section 4",
+  ),
+  _s("s4.1", "First conversation created (signal fires)", {
+    when: "First time a chat reaches 2 shopper messages",
+    where: "Backend signal · home router flips to With Conversation",
+    desc:
+      "Once analytics.conversations.totalCount > 0, the home router switches to the With Conversation screen permanently.",
+    events: [
+      _ev(
+        "backend",
+        "📶",
+        "chat_session_first_2_messages_added_signal",
+        "Fires the first time any new chat hits 2 shopper messages",
+        "Triggers the merchant-side new-conversation email and flips the home variant.",
+      ),
+    ],
+  }),
+  _s("s4-email", "Email · New Customer Conversation (every new chat)", {
+    when: "Each new chat reaches 2 shopper messages",
+    where: "EmailNotificationService.prepare_new_conversation_email()",
+    desc:
+      "Goes to merchant primary email. Optionally CCs the customer per NotificationSettings.",
+    events: [
+      _ev(
+        "email",
+        "🗣",
+        "New Customer Conversation",
+        "Subject: New Customer Conversation - Convi",
+        "Template: convi/apps/account/templates/account/new_conversation_email.html. Body: customer's first message + AI's response preview + dashboard link.",
+      ),
+    ],
+  }),
+
+  _h(
+    "h5",
+    "STATE 5 — Steady-state operator",
+    "Paid + live + has conversations. The everyday view. Sub-states cover usage caps, regressions, and downgrade.",
+    "primary",
+    "Section 5",
+  ),
+  _s("s5.1", "Steady state — under usage limit", {
+    when: "Every visit during normal operation",
+    where: "/ · With Conversation",
+    desc:
+      "Page subtitle: home.subtitle_operator. The home is the operator dashboard with KPIs, live activity, and recommendations.",
+    events: [
+      _ev(
+        "banner",
+        "📊",
+        "Live Banner",
+        "home.operator.live_banner_title — refreshes every 10s",
+        "Active shoppers + avg AI reply time + conversations today. 'Open Conversations' button → /analyze or /conversations.",
+      ),
+      _ev(
+        "banner",
+        "🚨",
+        "Needs Attention list",
+        "Low-quality answer flagged · feedback to triage · knowledge gap · handover awaiting reply",
+        "Items requiring merchant action.",
+      ),
+      _ev(
+        "banner",
+        "📈",
+        "Overview KPI grid",
+        "Conversations answered · hours saved · AI resolution rate · top topics",
+        "Aggregated stats.",
+      ),
+      _ev(
+        "banner",
+        "💳",
+        "Current Plan card (paid-only)",
+        "Current tier · usage bar · next plan suggestion",
+        "Hidden on Free.",
+      ),
+      _ev(
+        "banner",
+        "📡",
+        "Live Activity Feed (paid-only)",
+        "Stream of recent events: AI answered · handover · negative feedback",
+        "Hidden on Free.",
+      ),
+      _ev(
+        "banner",
+        "💡",
+        "Recommendations",
+        "'Add return policy to knowledge' · 'Train on FAQs from last week's chats'",
+        "Algorithmic suggestions.",
+      ),
+      _ev(
+        "banner",
+        "🎯",
+        "Engagement Section",
+        "Onboarding cards for tasks they haven't done",
+        "Train more, customize bubble, test simulations.",
+      ),
+      _ev(
+        "banner",
+        "📅",
+        "Booking Demo Card",
+        "Persistent",
+        "Always present.",
+      ),
+    ],
+  }),
+  _s("s5.2", "At ~80% of monthly cap", {
+    when: "monthlyAiResolutionUsage / Limit ≈ 0.8",
+    where: "/ · With Conversation",
+    desc: "Same as 5.1 plus an early-warning banner.",
+    events: [
+      _ev(
+        "banner",
+        "⚡",
+        "Early Warning Banner",
+        "Tone: warning · dismissible (BANNERS.EARLY_PRICING_WARNING)",
+        "pricing.early_warning_title / _description. CTA: pricing.early_warning_cta — 'Upgrade to {Plan} — ${price}' with live pricing.",
+      ),
+    ],
+  }),
+  _s("s5.3", "At 100% of monthly cap", {
+    when: "monthlyAiResolutionUsage >= monthlyAiResolutionLimit",
+    where: "/ · With Conversation",
+    desc: "Critical banner sits until reset or upgrade.",
+    events: [
+      _ev(
+        "banner",
+        "🛑",
+        "Limit Reached Banner",
+        "Tone: critical · NOT dismissible",
+        "home.operator.limit_reached_title / _description. Action 'Upgrade plan' → /settings/plan. Body interpolates days-until-reset or 'resets today'.",
+      ),
+    ],
+  }),
+  _s("s5.4", "Paid + Widget ON + Embed OFF + has historical conversations", {
+    when: "They removed the app embed after going live",
+    where: "/ · With Conversation",
+    desc: "Reason not live in useLaunchStatus(): EMBED.",
+    events: [
+      _ev(
+        "banner",
+        "📊",
+        "Live Banner (zero active shoppers)",
+        "Widget not on the storefront, so no live shoppers",
+        "Activity feed still shows past events.",
+      ),
+      _ev(
+        "banner",
+        "🚨",
+        "Needs Attention surfaces 'App embed not activated'",
+        "Calls out the missing embed",
+        "Direct deep-link to fix.",
+      ),
+    ],
+  }),
+  _s("s5.5", "Paid + Widget OFF + Embed ON + has historical conversations", {
+    when: "They disabled the widget toggle inside Convi",
+    where: "/ · With Conversation",
+    desc: "Reason not live: WIDGET.",
+    events: [
+      _ev(
+        "banner",
+        "🚨",
+        "Needs Attention surfaces 'Enable a widget'",
+        "Embed is good but all widget toggles are off",
+        "Click to /publish/widgets.",
+      ),
+    ],
+  }),
+  _s("s5.6", "Paid + Widget OFF + Embed OFF + has historical conversations", {
+    when: "Worst paid regression — both switches off",
+    where: "/ · With Conversation",
+    desc: "Reason not live: WIDGET (widget is the first thing checked).",
+    events: [
+      _ev(
+        "banner",
+        "🚨",
+        "Needs Attention flags BOTH widget and embed",
+        "No live activity until at least both come back on",
+        "Recommendations push to re-enable.",
+      ),
+    ],
+  }),
+  _s("s5.7", "Free + has historical conversations (downgrade)", {
+    when: "The merchant downgraded after using Convi",
+    where: "/ · With Conversation",
+    desc:
+      "Home variant is still With Conversation because count > 0, but the paid-only sections disappear.",
+    events: [
+      _ev(
+        "banner",
+        "👻",
+        "Current Plan card hidden",
+        "Paid-only",
+        "Gone on Free.",
+      ),
+      _ev(
+        "banner",
+        "👻",
+        "Live Activity Feed hidden",
+        "Paid-only",
+        "Gone on Free.",
+      ),
+      _ev(
+        "banner",
+        "💡",
+        "Recommendations push re-subscribe",
+        "Re-engagement messaging",
+        "Plus the plan-gate suppresses the widget on the storefront.",
+      ),
+    ],
+  }),
+  _s("s5-handover", "Email · Handover Notification", {
+    when: "Shopper requests handover OR AI cannot resolve",
+    where: "EmailNotificationService — chat_session_handed_over_to_human_signal",
+    desc: "Urgent tone email to the merchant.",
+    events: [
+      _ev(
+        "email",
+        "🆘",
+        "Handover Notification",
+        "Subject: Customer Needs Your Help",
+        "Body: urgent tone, dashboard link.",
+      ),
+    ],
+  }),
+  _s("s5-summary", "Email · Session Summary", {
+    when: "Conversation resolved (chat_session_resolved_signal)",
+    where: "EmailNotificationService",
+    desc: "Per-conversation digest.",
+    events: [
+      _ev(
+        "email",
+        "📋",
+        "Session Summary",
+        "Subject: Chat summary: {customer_name} — Convi",
+        "Body: topics discussed · resolution status · sentiment · AI performance metrics.",
+      ),
+    ],
+  }),
+  _s("s5-weekly", "Email · Weekly digest (one of two)", {
+    when: "Weekly cron — send_weekly_reports_fanout_task",
+    where: "Per shop, picks one based on activity",
+    desc: "Either the Value Report (active shop) or the Re-engagement nudge (quiet shop).",
+    events: [
+      _ev(
+        "email",
+        "📈",
+        "Weekly Value Report (shop had activity)",
+        "Subject: Your week with Convi: {N} questions answered, ~{H} hours saved",
+        "Body: top products, top pages, AI resolution rate, trending insights, conversations answered, hours saved.",
+      ),
+      _ev(
+        "email",
+        "💤",
+        "Weekly Re-engagement (shop had no activity)",
+        "Subject: Convi is ready when your customers are",
+        "Body: soft nudge to drive traffic to the widget.",
+      ),
+    ],
+  }),
+  _s("s5-admin", "Email · Internal admin emails", {
+    when: "Tool-driven",
+    where: "Sent to the merchant's configured notification address",
+    desc: "Two internal-ish emails that fire when the AI uses certain tools.",
+    events: [
+      _ev(
+        "email",
+        "📨",
+        "Chat Handover Notification (Admin)",
+        "Subject: Chat Handover Requested",
+        "Template: convi/apps/tools/templates/tools/handover.html. Triggered when shopper invokes the handover tool.",
+      ),
+      _ev(
+        "email",
+        "📨",
+        "Order Cancellation Notification (Admin)",
+        "Subject: Order Cancellation Requested",
+        "Template: convi/apps/tools/templates/tools/cancel_order.html. Triggered when shopper uses the AI order-cancellation tool.",
+      ),
+    ],
+  }),
+  _s("s5-roadmap", "Emails coded but not yet sending (roadmap)", {
+    when: "Templates + Celery tasks exist, raise NotImplementedError",
+    where: "Roadmap — never delivered today",
+    desc: "Three lifecycle emails are stubbed but never reach the merchant.",
+    events: [
+      _ev(
+        "roadmap",
+        "🧷",
+        "Pre-flight Report",
+        "Subject: Pre-flight: {passed} / {total} checks passed",
+        "Template + Celery task exist; raises NotImplementedError.",
+      ),
+      _ev(
+        "roadmap",
+        "💡",
+        "Weekly Insight",
+        "Subject: Insight: {insight_headline}",
+        "Template + Celery task exist; raises NotImplementedError.",
+      ),
+      _ev(
+        "roadmap",
+        "🏆",
+        "Milestone",
+        "Subject: 🎉 {N} questions answered — that's about {H} hours saved",
+        "Template + Celery task exist; raises NotImplementedError.",
+      ),
+    ],
+  }),
+
+  _h(
+    "hx",
+    "CROSS-CUTTING — surfaces visible from any state",
+    "Banners and modals that can layer on top of any of the states above. Not state-gated.",
+    "neutral",
+    "Section X",
+  ),
+  _s("sx-train", "/train · Knowledge management surfaces", {
+    when: "Whenever the merchant is on /train",
+    where: "/train",
+    desc: "Two banners ride on this page.",
+    events: [
+      _ev(
+        "banner",
+        "🩺",
+        "Content Health Banner",
+        "train.learn.banner_title / .banner_description",
+        "Four sub-metric blocks: Coverage (Full/Partial), Freshness (Current/Syncing), Quality (N flagged), Sources (N custom FAQs).",
+      ),
+      _ev(
+        "banner",
+        "✉",
+        "Email Notification Banner (Post-Sync)",
+        "train.learn.email_banner_title / .email_banner_desc",
+        "Offered during indexing; lets the merchant opt in to an email when sync is done.",
+      ),
+    ],
+  }),
+  _s("sx-analyze", "/analyze · Conversations + logs", {
+    when: "Viewing playground / pre-flight / simulation logs",
+    where: "/analyze",
+    desc:
+      "Info banner clarifying that this is sandboxed traffic, not production.",
+    events: [
+      _ev(
+        "banner",
+        "🧪",
+        "Sandbox Environment Banner",
+        "evaluate.env_sandbox_banner_title / _description",
+        "Tone: info.",
+      ),
+    ],
+  }),
+  _s("sx-eval", "/evaluate/simulations · Pre-flight simulations", {
+    when: "Visiting the simulations tab",
+    where: "/evaluate/simulations",
+    desc: "Pitches simulations as a feature.",
+    events: [
+      _ev(
+        "banner",
+        "🎛",
+        "Simulations Feature Banner",
+        "evaluate.simulations.banner_title / .banner_description",
+        "Marketing-ish info card.",
+      ),
+    ],
+  }),
+  _s("sx-publish", "/publish/widgets · Widget management", {
+    when: "Whenever on /publish/widgets",
+    where: "/publish/widgets",
+    desc: "Plan + embed gating banners + per-widget toggles.",
+    events: [
+      _ev(
+        "banner",
+        "🧩",
+        "App Embed Status Banner (success or warning)",
+        "publish.widgets.app_embed_title_on/off + _description_on/off",
+        "On click: deep-links to Shopify theme editor.",
+      ),
+      _ev(
+        "banner",
+        "🔒",
+        "Free Plan Upgrade Prompt (Free only)",
+        "Tone: critical · publish.widgets.free_plan_title / _description",
+        "Action 'See plans' → /settings/plan.",
+      ),
+    ],
+  }),
+  _s("sx-settings", "/settings/plan · Pricing page", {
+    when: "Pricing page visits",
+    where: "/settings/plan",
+    desc: "Pricing-specific banners + cards.",
+    events: [
+      _ev(
+        "banner",
+        "⏱",
+        "Welcome Offer Banner",
+        "pricing.welcome_offer_banner.title / .description",
+        "Trigger: within 7 days of install. 7-day countdown timer. Dismissible.",
+      ),
+    ],
+  }),
+  _s("sx-error", "Global · Error Boundary", {
+    when: "If the React tree crashes",
+    where: "Wraps the entire app",
+    desc: "Never shows raw error messages.",
+    events: [
+      _ev(
+        "modal",
+        "💥",
+        "Error Boundary",
+        "common.error_boundary_title / _description / _action",
+        "Fallback screen. Click action to retry / refresh.",
+      ),
+    ],
+  }),
 ];
 
-// 4×4 grid layout — row = phase, col = switch combo
-const _stateGrid = (() => {
-  const COL_W = 360;
-  const ROW_H = 720;
-  const X0 = 40;
-  const Y0 = 40;
-  return MERCHANT_STATES.map((s) => {
-    const num = parseInt(s.stateId.slice(1), 10);
-    const phaseA = s.stateId[0] === "A";
-    const isPaid = num >= 5;
-    const col = (num - 1) % 4;
-    const row = (phaseA ? 0 : 2) + (isPaid ? 1 : 0);
-    return {
-      id: s.stateId,
-      type: "merchant-state",
-      position: { x: X0 + col * COL_W, y: Y0 + row * ROW_H },
-      data: { lane: "merchant", ...s },
-    };
-  });
-})();
+// --- CUSTOMER FLOW (Shopper STATE 0..9) -----------------------------------
 
-// Transition edges
-const _edgeGreen = (id, source, target, label) => ({
-  id,
-  source,
-  target,
-  type: "smoothstep",
-  label,
-  style: { stroke: "#16a34a", strokeWidth: 2.5 },
-  labelStyle: { fill: "#15803d", fontWeight: 700, fontSize: 11 },
-  labelBgStyle: { fill: "#dcfce7" },
-  labelBgPadding: [6, 4],
-  labelBgBorderRadius: 6,
-});
-const _edgeBlue = (id, source, target, label) => ({
-  id,
-  source,
-  target,
-  type: "smoothstep",
-  label,
-  style: { stroke: "#2563eb", strokeWidth: 2 },
-  labelStyle: { fill: "#1d4ed8", fontWeight: 700, fontSize: 11 },
-  labelBgStyle: { fill: "#dbeafe" },
-  labelBgPadding: [6, 4],
-  labelBgBorderRadius: 6,
-});
-const _edgeRed = (id, source, target, label) => ({
-  id,
-  source,
-  target,
-  type: "smoothstep",
-  label,
-  animated: true,
-  style: { stroke: "#dc2626", strokeWidth: 1.5, strokeDasharray: "6 4" },
-  labelStyle: { fill: "#b91c1c", fontWeight: 600, fontSize: 10 },
-  labelBgStyle: { fill: "#fee2e2" },
-  labelBgPadding: [4, 3],
-  labelBgBorderRadius: 4,
-});
-
-const _stateEdges = [
-  // Happy path
-  _edgeGreen("h-a1-a5", "A1", "A5", "Upgrade plan"),
-  _edgeGreen("h-a5-a6", "A5", "A6", "Enable widget"),
-  _edgeGreen("h-a6-a8", "A6", "A8", "Activate App Embed"),
-  _edgeBlue("h-a8-b8", "A8", "B8", "First conversation"),
-
-  // Alternative paths that still lead to A8
-  _edgeGreen("h-a5-a7", "A5", "A7", "Activate App Embed first"),
-  _edgeGreen("h-a7-a8", "A7", "A8", "Enable widget"),
-
-  // Plan upgrades from edge-case Free states
-  _edgeGreen("u-a2-a6", "A2", "A6", "Upgrade plan"),
-  _edgeGreen("u-a3-a7", "A3", "A7", "Upgrade plan"),
-  _edgeGreen("u-a4-a8", "A4", "A8", "Upgrade plan"),
-
-  // Regressions while still pre-conversation
-  _edgeRed("r-a5-a1", "A5", "A1", "Downgrade"),
-  _edgeRed("r-a8-a6", "A8", "A6", "Disable embed"),
-  _edgeRed("r-a8-a7", "A8", "A7", "Disable widget"),
-
-  // First-conversation arrows (the few that can actually happen — only A8
-  // realistically has a live widget that gathers a conversation, but model
-  // the others as data-import or downgrade scenarios)
-  _edgeBlue("c-a1-b1", "A1", "B1", "Downgraded → had history"),
-
-  // Regressions after going live
-  _edgeRed("r-b8-b6", "B8", "B6", "Disable embed"),
-  _edgeRed("r-b8-b7", "B8", "B7", "Disable widget"),
-  _edgeRed("r-b8-b5", "B8", "B5", "Disable both"),
-  _edgeRed("r-b8-b1", "B8", "B1", "Downgrade"),
-  _edgeRed("r-b5-b1", "B5", "B1", "Downgrade"),
-  _edgeRed("r-b6-b2", "B6", "B2", "Downgrade"),
-  _edgeRed("r-b7-b3", "B7", "B3", "Downgrade"),
-
-  // Recovery from B regressions
-  _edgeGreen("h-b6-b8", "B6", "B8", "Re-activate embed"),
-  _edgeGreen("h-b7-b8", "B7", "B8", "Re-enable widget"),
+const _CUSTOMER_FLOW_SPEC = [
+  _h(
+    "ch0",
+    "Shopper Journey — Storefront",
+    "Everything the customer sees on the merchant's store, from before they click the bubble to closing a chat.",
+    "primary",
+    "Customer",
+  ),
+  _s("sh0", "Shopper STATE 0 — Storefront loaded, widget not yet opened", {
+    when: "Before the shopper interacts with the widget",
+    where: "Storefront",
+    desc: "Launcher button + optional proactive bubble.",
+    events: [
+      _ev(
+        "widget",
+        "●",
+        "Launcher button",
+        "Icon, no text",
+        "The default closed state of the widget.",
+      ),
+      _ev(
+        "widget",
+        "💭",
+        "Proactive Speech Bubble (+30s)",
+        "Merchant-configured displayText + assistantText",
+        "After 30s dwell on a product/home page, if the merchant enabled it. Otherwise nothing.",
+      ),
+    ],
+  }),
+  _s("sh1", "Shopper STATE 1 — Widget opens, no chat yet", {
+    when: "On first click of the launcher",
+    where: "In-widget · home view",
+    desc: "Welcome + suggested prompts + input + footer.",
+    events: [
+      _ev(
+        "widget",
+        "👋",
+        "Welcome message",
+        "chatWelcome (default 'Chat with us') or embedChatWelcome",
+        "Top of the widget home.",
+      ),
+      _ev(
+        "widget",
+        "✨",
+        "Suggested starter prompts",
+        "predefinedInquiries array",
+        "Default empty; merchant fills.",
+      ),
+      _ev(
+        "widget",
+        "⌨",
+        "Text input placeholder",
+        "'Type your message here…' (placeholder / embedPlaceholder key)",
+        "Hardcoded fallback.",
+      ),
+      _ev(
+        "widget",
+        "🔗",
+        "'Powered by Convi' footer",
+        "Only if settings.isPoweredByEnabled === true",
+        "Links to conviapp.com.",
+      ),
+    ],
+  }),
+  _s("sh2", "Shopper STATE 2 — Pre-chat survey (optional)", {
+    when: "Only if settings.isSurveyEnabled === true",
+    where: "Modal inside widget",
+    desc: "Captures name + email before the first message.",
+    events: [
+      _ev(
+        "modal",
+        "📝",
+        "Pre-chat survey modal",
+        "surveyMessage (default 'Please introduce yourself:')",
+        "Fields: surveyNamePlaceholder · surveyEmailPlaceholder. Buttons: surveySendButtonText · surveySkipButtonText (Skip hidden if required).",
+      ),
+    ],
+  }),
+  _s("sh3", "Shopper STATE 3 — AI is working (state placeholders)", {
+    when: "Between shopper message and AI reply",
+    where: "In-widget · status placeholders",
+    desc:
+      "Hardcoded English-only placeholders cycle as the AI calls tools (convi-sdk/.../state-placeholder).",
+    events: [
+      _ev(
+        "widget",
+        "◌",
+        "Initializing…",
+        "Boot state",
+        "Initial status while the agent spins up.",
+      ),
+      _ev(
+        "widget",
+        "🧠",
+        "Processing… / Thinking…",
+        "Reasoning",
+        "Generic working states.",
+      ),
+      _ev(
+        "widget",
+        "🔎",
+        "Searching…",
+        "Search tool in flight",
+        "Calling the search tool.",
+      ),
+      _ev(
+        "widget",
+        "📦",
+        "Tracking order…",
+        "Order tool in flight",
+        "Order tracking tool is being called.",
+      ),
+      _ev(
+        "widget",
+        "⏳",
+        "Waiting… / Loading…",
+        "Generic standby",
+        "Between tool calls.",
+      ),
+    ],
+  }),
+  _s("sh4", "Shopper STATE 4 — Cart actions (hardcoded errors)", {
+    when: "If the AI's cart tool fails",
+    where: "In-widget · cart errors",
+    desc: "All hardcoded English fallbacks.",
+    events: [
+      _ev(
+        "widget",
+        "🛒",
+        "Generic cart update error",
+        '"I had trouble updating your cart. Please try again."',
+        "Fallback for cart write failures.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Cart read error",
+        '"I had trouble reading your cart. Please try again."',
+        "Fallback for cart read failures.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Cart clear error",
+        '"I had trouble clearing your cart. Please try again."',
+        "Fallback for cart clear failures.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Out of stock",
+        '"Sorry, that item is out of stock."',
+        "Inventory miss.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Variant unavailable",
+        '"That variant is not available."',
+        "Variant gone or unpublished.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Product not found",
+        "\"Sorry, I couldn't find that product.\"",
+        "Lookup miss.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Quantity exceeds stock",
+        '"Could not update quantity — the requested amount may exceed available stock."',
+        "Inventory constraint.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Ambiguous match",
+        '"I found multiple matching items. Please be more specific."',
+        "Multiple products matched.",
+      ),
+      _ev(
+        "widget",
+        "🛒",
+        "Out-of-stock badge on product cards",
+        '"Out of stock"',
+        "Inline badge on each card.",
+      ),
+    ],
+  }),
+  _s("sh5", "Shopper STATE 5 — Order cancellation (OTP)", {
+    when: "Shopper asks the AI to cancel an order",
+    where: "In-widget + email to shopper",
+    desc:
+      "Shopper-side OTP loop. After verification, the merchant gets the admin cancellation email.",
+    events: [
+      _ev(
+        "email",
+        "🔢",
+        "OTP email to shopper",
+        "Template: convi/apps/tools/templates/tools/otp.html",
+        "6-digit code with TTL countdown. Sent to the shopper's email.",
+      ),
+      _ev(
+        "modal",
+        "🔢",
+        "OTP confirmation modal in widget",
+        "Captures the code",
+        "Once entered, triggers the Admin Order Cancellation email to the merchant.",
+      ),
+    ],
+  }),
+  _s("sh6", "Shopper STATE 6 — Handover requested or AI gives up", {
+    when: "Shopper escalates OR AI cannot resolve",
+    where: "In-widget · handover banner",
+    desc: "Hardcoded message + merchant gets the Handover Notification email.",
+    events: [
+      _ev(
+        "widget",
+        "🙋",
+        "Handover banner inside chat",
+        "\"This conversation has been handed over to a human agent. Start a new chat if you don't want to wait.\"",
+        "Static copy.",
+      ),
+    ],
+  }),
+  _s("sh7", "Shopper STATE 7 — Conversation resolved", {
+    when: "Conversation closes",
+    where: "In-widget · resolved banner",
+    desc: "Hardcoded message + merchant gets the Session Summary email.",
+    events: [
+      _ev(
+        "widget",
+        "🔒",
+        "Resolved banner inside chat",
+        '"This conversation is closed. You can start a new chat to chat with us."',
+        "Static copy.",
+      ),
+    ],
+  }),
+  _s("sh8", "Shopper STATE 8 — Generic error", {
+    when: "When something breaks",
+    where: "In-widget · error screen",
+    desc: "Heading hardcoded; body dynamic from API.",
+    events: [
+      _ev(
+        "widget",
+        "⚠",
+        "'Something went wrong' heading",
+        "Hardcoded",
+        "Body: dynamic API error message.",
+      ),
+    ],
+  }),
+  _s("sh9", "Shopper STATE 9 — Post-conversation CSAT (optional)", {
+    when:
+      "After AI's last message, only if settings.isSatisfactionFeedbackEnabled",
+    where: "Modal in widget",
+    desc: "Thumbs up/down + optional follow-up.",
+    events: [
+      _ev(
+        "modal",
+        "👍",
+        "CSAT prompt",
+        "satisfactionFeedbackTitle (default 'Was your inquiry resolved?')",
+        "Thumbs up / thumbs down.",
+      ),
+      _ev(
+        "modal",
+        "💬",
+        "Negative feedback follow-up",
+        "negativeSatisfactionFeedbackReason — 'We are sorry that you had a bad experience. What was the problem?'",
+        "Field placeholder negativeFeedbackPlaceholder; submit negativeFeedbackSendButtonText.",
+      ),
+      _ev(
+        "modal",
+        "✅",
+        "Submitted confirmation",
+        "satisfactionFeedbackAfterSubmission — 'Your feedback submitted'",
+        "Confirms the submission.",
+      ),
+    ],
+  }),
+  _s("sh10", "What the shopper NEVER sees", {
+    when: "Always",
+    where: "Anywhere",
+    desc: "Things deliberately omitted from the widget.",
+    events: [
+      _ev(
+        "widget",
+        "🚫",
+        "No GDPR / cookie consent UI",
+        "Out of scope for the widget",
+        "Relies on the merchant's broader site consent.",
+      ),
+      _ev(
+        "widget",
+        "🚫",
+        "No business-hours awareness",
+        "Widget is always 'open'",
+        "There's no out-of-hours messaging.",
+      ),
+      _ev(
+        "widget",
+        "🚫",
+        "No proactive email capture",
+        "Beyond the pre-chat survey",
+        "No standalone email-capture nudges.",
+      ),
+      _ev(
+        "widget",
+        "🚫",
+        "No 'Powered by Convi' when disabled",
+        "Hidden when settings.isPoweredByEnabled === false",
+        "Merchant-controlled.",
+      ),
+    ],
+  }),
 ];
+
+// --- Build flow nodes + edges from spec -----------------------------------
+
+function _buildFlow(spec) {
+  const nodes = [];
+  const edges = [];
+  let cursor = 60;
+  let prevStageId = null;
+
+  for (const item of spec) {
+    if (item._kind === "header") {
+      nodes.push({
+        id: item.id,
+        type: "header",
+        position: { x: FLOW_X, y: cursor },
+        data: {
+          lane: "merchant",
+          kicker: item.kicker,
+          title: item.title,
+          subtitle: item.subtitle,
+          tone: item.tone,
+        },
+      });
+      cursor += FLOW_HEADER_H + FLOW_GAP;
+      // Headers reset the chain — but we still draw a faint linking edge from
+      // the previous stage to give visual continuity.
+    } else {
+      nodes.push({
+        id: item.id,
+        type: "stage",
+        position: { x: FLOW_X, y: cursor },
+        data: {
+          lane: "merchant",
+          n: item.n,
+          title: item.title,
+          when: item.when,
+          where: item.where,
+          desc: item.desc,
+          events: item.events,
+        },
+      });
+      const evCount = item.events?.length ?? 0;
+      cursor += FLOW_BASE_H + evCount * FLOW_EV_H + FLOW_GAP;
+      if (prevStageId) {
+        edges.push({
+          id: `e-${prevStageId}-${item.id}`,
+          source: prevStageId,
+          target: item.id,
+          type: "smoothstep",
+          style: { strokeWidth: 2 },
+        });
+      }
+      prevStageId = item.id;
+    }
+  }
+  return { nodes, edges };
+}
+
+const _merchantFlow = _buildFlow(_MERCHANT_FLOW_SPEC);
+const _customerFlow = _buildFlow(_CUSTOMER_FLOW_SPEC);
 
 export const INITIAL_VIEWS = [
   {
     id: "merchant",
-    name: "🛍️ Merchant states",
-    nodes: _stateGrid,
-    edges: _stateEdges,
+    name: "🛍️ Merchant journey",
+    nodes: _merchantFlow.nodes,
+    edges: _merchantFlow.edges,
     filters: defaultFilters(),
   },
   {
     id: "customer",
     name: "🛒 Customer journey",
-    nodes: _customer.nodes,
-    edges: _customer.edges,
+    nodes: _customerFlow.nodes,
+    edges: _customerFlow.edges,
     filters: defaultFilters(),
   },
   {
     id: "full",
-    name: "🌐 Full journey",
+    name: "🌐 Full journey (legacy linear)",
     nodes: initialNodes,
     edges: initialEdges,
     filters: defaultFilters(),

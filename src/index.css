@@ -959,6 +959,108 @@ body {
   background: #fff;
 }
 
+/* ============== SECTION HEADER NODE ============== */
+.header-node {
+  width: 520px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  font-family: "Inter", sans-serif;
+  position: relative;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+}
+.header-node.tone-primary {
+  background: linear-gradient(120deg, #ede9ff 0%, #f7f5ff 100%);
+  border-color: rgba(125, 113, 254, 0.35);
+}
+.header-node.tone-neutral {
+  background: linear-gradient(120deg, #f1f5f9 0%, #ffffff 100%);
+  border-color: rgba(100, 116, 139, 0.25);
+}
+.header-node.tone-muted {
+  background: linear-gradient(120deg, #f8fafc 0%, #ffffff 100%);
+  border-color: var(--line);
+}
+.header-node.selected {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.hn-body {
+  flex: 1;
+  min-width: 0;
+}
+.hn-kicker {
+  font: 600 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.header-node.tone-neutral .hn-kicker { color: #475569; }
+.header-node.tone-muted .hn-kicker { color: var(--ink-mute); }
+.hn-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0 0 6px;
+  color: var(--ink);
+  cursor: text;
+}
+.hn-title-input {
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  width: 100%;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  outline: none;
+  background: #fff;
+}
+.hn-subtitle {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 0;
+  cursor: text;
+}
+.hn-subtitle:empty::before {
+  content: "Double-click to add a subtitle";
+  opacity: 0.5;
+}
+.hn-subtitle-input {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  outline: none;
+  background: #fff;
+  margin-top: 2px;
+}
+.hn-del {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--ink-mute);
+  opacity: 0.55;
+  cursor: pointer;
+}
+.hn-del:hover {
+  background: rgba(15, 15, 26, 0.06);
+  opacity: 1;
+}
+
 /* ============== MERCHANT STATE NODE ============== */
 .state-node {
   width: 320px;

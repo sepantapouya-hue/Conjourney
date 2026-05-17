@@ -17,6 +17,7 @@ import StageNode from "./StageNode";
 import NoteNode from "./NoteNode";
 import ConditionNode from "./ConditionNode";
 import MerchantStateNode from "./MerchantStateNode";
+import HeaderNode from "./HeaderNode";
 import { LiveCursors, PresenceTracker } from "./LivePresence";
 import { presenceEnabled } from "./PresenceProvider";
 import LiveEditSync from "./LiveEditSync";
@@ -376,6 +377,16 @@ function EditorInner({ onLogout }) {
             ...n.data,
             onChange: onConditionChange,
             onDelete: onConditionDelete,
+          },
+        };
+      }
+      if (n.type === "header") {
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            onChange: onNoteChange,
+            onDelete: onNoteDelete,
           },
         };
       }
@@ -889,6 +900,7 @@ const NODE_TYPES = {
   note: NoteNode,
   condition: ConditionNode,
   "merchant-state": MerchantStateNode,
+  header: HeaderNode,
 };
 
 function miniMapColor(node) {
