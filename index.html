@@ -1,184 +1,23 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Convi — The User Journey</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conjourney — Convi User Journey</title>
+    <meta
+      name="description"
+      content="Interactive flow editor for the Convi user journey."
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
-    <div class="ambient">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-
-    <header class="hero">
-      <div class="wrap">
-        <div class="pill">
-          <span class="dot"></span> Live product map · v2026.05
-        </div>
-        <h1>
-          The Convi <span class="grad">User Journey</span>
-        </h1>
-        <p class="lede">
-          Two parallel stories — the merchant installing an AI agent on Shopify,
-          and the shopper who eventually talks to it. Every email, banner,
-          modal, toast, and silent backend event, in order.
-        </p>
-
-        <div class="legend" role="group" aria-label="Legend">
-          <button class="chip active" data-filter="all">
-            <span class="sw all"></span> All events
-          </button>
-          <button class="chip" data-filter="email">
-            <span class="sw email"></span> Email
-          </button>
-          <button class="chip" data-filter="banner">
-            <span class="sw banner"></span> In-app banner
-          </button>
-          <button class="chip" data-filter="modal">
-            <span class="sw modal"></span> Modal
-          </button>
-          <button class="chip" data-filter="widget">
-            <span class="sw widget"></span> Widget UI
-          </button>
-          <button class="chip" data-filter="toast">
-            <span class="sw toast"></span> Toast
-          </button>
-          <button class="chip" data-filter="backend">
-            <span class="sw backend"></span> Backend / silent
-          </button>
-          <button class="chip" data-filter="roadmap">
-            <span class="sw roadmap"></span> Roadmap
-          </button>
-        </div>
-
-        <div class="lane-heads">
-          <div class="head merchant">
-            <div class="icon">🛍️</div>
-            <div>
-              <div class="kicker">Lane 1</div>
-              <div class="title">The Merchant</div>
-              <div class="sub">Shop owner inside the Convi admin</div>
-            </div>
-          </div>
-          <div class="head shopper">
-            <div class="icon">🛒</div>
-            <div>
-              <div class="kicker">Lane 2</div>
-              <div class="title">The Shopper</div>
-              <div class="sub">Customer on the storefront</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <main class="diagram">
-      <div class="rail" aria-hidden="true"></div>
-      <div class="wrap stages" id="stages"></div>
-    </main>
-
-    <section class="summary">
-      <div class="wrap">
-        <h2>Summary by channel</h2>
-        <div class="grid">
-          <div class="cell head">Channel</div>
-          <div class="cell head">Merchant sees</div>
-          <div class="cell head">Shopper sees</div>
-
-          <div class="cell label">📧 Email — Convi to them</div>
-          <div class="cell">
-            Welcome-synced, Train-nudge, Widget-live, New-conversation,
-            Handover, Session-summary, Weekly-value or Weekly-reengagement
-          </div>
-          <div class="cell muted">OTP for order cancellation</div>
-
-          <div class="cell label">📧 Email — internal to merchant</div>
-          <div class="cell">Admin handover, Admin order-cancellation</div>
-          <div class="cell muted">—</div>
-
-          <div class="cell label">🪧 In-app banners</div>
-          <div class="cell">
-            Welcome offer · Onboarding discount · Import in progress · Missing
-            policies · Content health · App embed status · Live shopper
-            activity · Early warning (80%) · Limit reached (100%) · Just-live
-            celebration · Sandbox · Simulations · Booking demo · Free-plan
-            upgrade prompt
-          </div>
-          <div class="cell muted">—</div>
-
-          <div class="cell label">💬 In-widget messages</div>
-          <div class="cell muted">—</div>
-          <div class="cell">
-            Welcome greeting · Suggested prompts · Typing / loading states ·
-            Cart errors · Handover message · Resolved message · Pre-chat survey
-            · CSAT survey · "Powered by Convi" footer · Proactive speech bubble
-          </div>
-
-          <div class="cell label">🗔 Modals</div>
-          <div class="cell">Permission modal · Error boundary</div>
-          <div class="cell">Pre-chat survey · CSAT feedback</div>
-
-          <div class="cell label">📣 Internal-team alerts</div>
-          <div class="cell">
-            Intercom event on install only — no Slack hook in code
-          </div>
-          <div class="cell muted">—</div>
-        </div>
-      </div>
-    </section>
-
-    <section class="roadmap-section">
-      <div class="wrap">
-        <div class="roadmap-card">
-          <div class="badge">On the roadmap</div>
-          <h3>Three lifecycle emails exist as templates but raise <code>NotImplementedError</code></h3>
-          <ul>
-            <li><strong>Pre-flight Report</strong> — "Pre-flight: {X} / {Y} checks passed"</li>
-            <li><strong>Weekly Insight</strong> — "Insight: {headline}"</li>
-            <li><strong>Milestone</strong> — "🎉 {N} questions answered — that's about {H} hours saved"</li>
-          </ul>
-        </div>
-
-        <div class="never-card">
-          <div class="badge dim">What the shopper never sees</div>
-          <ul>
-            <li>No GDPR / cookie consent UI in the widget</li>
-            <li>No business-hours awareness — widget always says it's ready</li>
-            <li>No proactive email capture beyond the optional pre-chat survey</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <footer>
-      <div class="wrap">
-        <div class="arc">
-          install → catalog crawl → <em>Welcome</em> email → 5-step setup
-          wizard → <em>Train nudge</em> → training → publish gating → app-embed
-          activation → <em>Widget Live</em> → shoppers start chatting →
-          per-conversation emails + Just-Live celebration + Live activity
-          banner → weekly digests → 80% / 100% usage warnings if they outgrow
-          their plan.
-        </div>
-      </div>
-    </footer>
-
-    <aside class="panel" id="panel" aria-hidden="true">
-      <button class="x" id="panelClose" aria-label="Close">×</button>
-      <div class="panel-inner" id="panelBody"></div>
-    </aside>
-    <div class="scrim" id="scrim"></div>
-
-    <script src="data.js"></script>
-    <script src="app.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
