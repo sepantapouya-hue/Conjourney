@@ -16,6 +16,7 @@ import "@xyflow/react/dist/style.css";
 import StageNode from "./StageNode";
 import NoteNode from "./NoteNode";
 import ConditionNode from "./ConditionNode";
+import MerchantStateNode from "./MerchantStateNode";
 import { LiveCursors, PresenceTracker } from "./LivePresence";
 import { presenceEnabled } from "./PresenceProvider";
 import LiveEditSync from "./LiveEditSync";
@@ -887,6 +888,7 @@ const NODE_TYPES = {
   stage: StageNode,
   note: NoteNode,
   condition: ConditionNode,
+  "merchant-state": MerchantStateNode,
 };
 
 function miniMapColor(node) {

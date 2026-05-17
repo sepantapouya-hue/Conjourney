@@ -922,15 +922,394 @@ function _filterByLanes(allowed) {
   return { nodes: placed, edges };
 }
 
-const _merchant = _filterByLanes(["merchant", "both"]);
 const _customer = _filterByLanes(["shopper", "both"]);
+
+// --- Merchant view = state matrix (A1..A8 + B1..B8) ---------------------
+// Replaces the linear merchant lane with the 16 sub-states a merchant can
+// be in, organized as a 4×4 grid: row = phase (before/after first convo
+// crossed with plan), column = (widget, embed) switch combo.
+
+const MERCHANT_STATES = [
+  // Row 0 — Before any conversation, Free plan
+  {
+    stateId: "A1",
+    title: "Day zero",
+    plan: "free", widget: false, embed: false, hasConvos: false,
+    home: "Free home",
+    activation: "JUST_INSTALLED → PREVIEW_READY",
+    reason: "PLAN",
+    summary:
+      "What every merchant sees right after install, while the catalog is being indexed.",
+    onScreen: [
+      "Onboarding Discount Banner (incomplete)",
+      "Launch Progress checklist",
+      "Import In Progress banner with %",
+      "Import Health card (sync status per resource)",
+      "Storefront Status: 'Free plan — upgrade to go live'",
+      "Booking Demo CTA",
+    ],
+    emails: ["Welcome — Synced (once crawl finishes)", "Train Nudge"],
+    next: "Finish wizard, train the AI with policies, upgrade to a paid plan.",
+  },
+  {
+    stateId: "A2",
+    title: "Free + Widget ON + Embed OFF",
+    plan: "free", widget: true, embed: false, hasConvos: false,
+    home: "Free home",
+    activation: "PREVIEW_READY",
+    reason: "PLAN",
+    summary:
+      "Edge case — reached via downgrade or internal override. Plan check blocks runtime render.",
+    onScreen: ["Same Free-home banners as A1"],
+    emails: [],
+    next: "Upgrade to a paid plan to actually publish.",
+  },
+  {
+    stateId: "A3",
+    title: "Free + Embed ON + Widget OFF",
+    plan: "free", widget: false, embed: true, hasConvos: false,
+    home: "Free home",
+    activation: "PREVIEW_READY",
+    reason: "PLAN",
+    summary:
+      "Activated the theme app embed before subscribing. Without an enabled widget there's nothing to render anyway.",
+    onScreen: ["Same Free-home banners as A1"],
+    emails: [],
+    next: "Upgrade plan, then enable a widget.",
+  },
+  {
+    stateId: "A4",
+    title: "Free + all switches ON (theoretical)",
+    plan: "free", widget: true, embed: true, hasConvos: false,
+    home: "Free home",
+    activation: "PREVIEW_READY",
+    reason: "PLAN",
+    summary:
+      "Should not occur in practice — the plan gate blocks widget activation. If reached, the widget is suppressed at runtime.",
+    onScreen: ["Same Free-home banners as A1"],
+    emails: [],
+    next: "Upgrade plan to actually serve the widget.",
+  },
+
+  // Row 1 — Before any conversation, Paid plan
+  {
+    stateId: "A5",
+    title: "Just upgraded",
+    plan: "paid", widget: false, embed: false, hasConvos: false,
+    home: "Paid Without Conversation",
+    activation: "PREVIEW_READY",
+    reason: "WIDGET",
+    summary:
+      "Bought a plan but hasn't enabled any widget surface yet.",
+    onScreen: [
+      "Launch Progress checklist",
+      "Import Health card",
+      "Storefront Status: 'Plan active — enable a widget'",
+      "Booking Demo CTA",
+    ],
+    emails: [],
+    next: "Turn on the bubble / ask-AI / FAQ under /publish/widgets.",
+  },
+  {
+    stateId: "A6",
+    title: "Widget ON, embed pending",
+    plan: "paid", widget: true, embed: false, hasConvos: false,
+    home: "Paid Without Conversation",
+    activation: "PREVIEW_READY",
+    reason: "EMBED",
+    summary:
+      "Most common pre-launch state. Plan + widget are good, but the Shopify theme has no app embed block.",
+    onScreen: [
+      "Launch Progress (one step red — 'activate app embed')",
+      "App Embed Status banner (warning) with 'Activate' deep-link",
+      "Import Health card",
+      "Storefront Status: prompts embed activation",
+    ],
+    emails: [],
+    next: "Click 'Activate' — opens the Shopify theme editor on the right anchor.",
+  },
+  {
+    stateId: "A7",
+    title: "Embed ON, widget OFF",
+    plan: "paid", widget: false, embed: true, hasConvos: false,
+    home: "Paid Without Conversation",
+    activation: "PREVIEW_READY",
+    reason: "WIDGET",
+    summary:
+      "Theme has the embed block but every widget toggle inside Convi is off.",
+    onScreen: [
+      "Launch Progress (widget step incomplete)",
+      "Import Health card",
+      "Storefront Status: 'Enable a widget to go live'",
+    ],
+    emails: [],
+    next: "Switch on at least one widget (Bubble / Ask-AI / FAQ).",
+  },
+  {
+    stateId: "A8",
+    title: "🎉 Just live",
+    plan: "paid", widget: true, embed: true, hasConvos: false,
+    home: "Paid Without Conversation",
+    activation: "VERIFIED_LIVE",
+    reason: "NONE",
+    summary:
+      "All three gates pass. The home celebrates — even with zero conversations.",
+    onScreen: [
+      "🟢 Celebration 'Just Live' banner with 3 green badges",
+      "Primary CTA: 'Start test conversation' → opens storefront",
+      "Launch Progress (all green)",
+      "Storefront Status: live",
+    ],
+    emails: ["Widget Live — '🎉 Convi is live on {your-shop-domain}'"],
+    next: "Drive a real shopper to the widget. First message → moves to B8.",
+  },
+
+  // Row 2 — After first conversation, Free plan (downgraded with history)
+  {
+    stateId: "B1",
+    title: "Downgraded — history remains",
+    plan: "free", widget: false, embed: false, hasConvos: true,
+    home: "With Conversation",
+    activation: "varies",
+    reason: "PLAN",
+    summary:
+      "Was paid, has chat history, but plan lapsed. New conversations are blocked by the plan gate.",
+    onScreen: [
+      "Live Banner (current activity, if any)",
+      "No 'Current Plan' card (free)",
+      "No paid-only Live Activity feed",
+      "Overview KPI grid (historical numbers)",
+      "Recommendations + Engagement push to re-subscribe",
+      "Booking Demo CTA",
+    ],
+    emails: [],
+    next: "Re-upgrade to resume serving shoppers.",
+  },
+  {
+    stateId: "B2",
+    title: "Free + Widget ON + had convs",
+    plan: "free", widget: true, embed: false, hasConvos: true,
+    home: "With Conversation",
+    activation: "varies",
+    reason: "PLAN",
+    summary:
+      "Same effective behaviour as B1 — paid-only sections hidden, runtime widget blocked by plan gate.",
+    onScreen: ["Same as B1"],
+    emails: [],
+    next: "Re-upgrade.",
+  },
+  {
+    stateId: "B3",
+    title: "Free + Embed ON + had convs",
+    plan: "free", widget: false, embed: true, hasConvos: true,
+    home: "With Conversation",
+    activation: "varies",
+    reason: "PLAN",
+    summary: "Same behaviour as B1.",
+    onScreen: ["Same as B1"],
+    emails: [],
+    next: "Re-upgrade.",
+  },
+  {
+    stateId: "B4",
+    title: "Free + all on + had convs",
+    plan: "free", widget: true, embed: true, hasConvos: true,
+    home: "With Conversation",
+    activation: "varies",
+    reason: "PLAN",
+    summary: "Same behaviour as B1 — plan gate wins regardless of toggles.",
+    onScreen: ["Same as B1"],
+    emails: [],
+    next: "Re-upgrade.",
+  },
+
+  // Row 3 — After first conversation, Paid plan
+  {
+    stateId: "B5",
+    title: "Disabled after going live",
+    plan: "paid", widget: false, embed: false, hasConvos: true,
+    home: "With Conversation",
+    activation: "PREVIEW_READY",
+    reason: "WIDGET",
+    summary:
+      "Was live; disabled the widget AND removed the embed. Historical conversations remain.",
+    onScreen: [
+      "Live Banner (zero active shoppers)",
+      "Current Plan card",
+      "Live Activity Feed (past events)",
+      "Needs Attention — flags disabled widget / missing embed",
+      "Overview KPI grid",
+      "Recommendations push to re-enable",
+    ],
+    emails: [],
+    next: "Re-enable a widget and re-activate the embed.",
+  },
+  {
+    stateId: "B6",
+    title: "Widget on, embed removed",
+    plan: "paid", widget: true, embed: false, hasConvos: true,
+    home: "With Conversation",
+    activation: "PREVIEW_READY",
+    reason: "EMBED",
+    summary:
+      "Same effective behaviour as B5 — widget toggle is on, but the storefront has no embed.",
+    onScreen: [
+      "Needs Attention surfaces 'Activate the app embed'",
+      "Otherwise same With-Conversation sections as B5",
+    ],
+    emails: [],
+    next: "Re-activate the embed in the Shopify theme editor.",
+  },
+  {
+    stateId: "B7",
+    title: "Embed on, all widgets off",
+    plan: "paid", widget: false, embed: true, hasConvos: true,
+    home: "With Conversation",
+    activation: "PREVIEW_READY",
+    reason: "WIDGET",
+    summary: "Inverse of B6 — embed present, widget toggles all off.",
+    onScreen: [
+      "Needs Attention surfaces 'Enable a widget'",
+      "Otherwise same With-Conversation sections as B5",
+    ],
+    emails: [],
+    next: "Switch a widget back on.",
+  },
+  {
+    stateId: "B8",
+    title: "Fully operational steady state",
+    plan: "paid", widget: true, embed: true, hasConvos: true,
+    home: "With Conversation",
+    activation: "VERIFIED_LIVE",
+    reason: "NONE",
+    summary:
+      "Live banner shows active shoppers + avg AI reply time (10s poll). KPIs, activity feed, plan card with next-tier upgrade.",
+    onScreen: [
+      "Live Banner (active shoppers + avg AI reply)",
+      "Limit Reached banner if usage ≥ limit (critical)",
+      "Early Warning banner at ~80% (dismissible)",
+      "Needs Attention list",
+      "Overview KPI grid + analytics cards",
+      "Current Plan card with upgrade",
+      "Live Activity Feed (AI / handover / negative-feedback)",
+      "Recommendations + Engagement + Booking Demo",
+    ],
+    emails: [
+      "New Customer Conversation (after first 2 msgs)",
+      "Handover (escalation / AI gave up)",
+      "Session Summary (each resolved chat)",
+      "Weekly Value Report",
+    ],
+    next: "Watch usage caps; optionally upgrade plan tier as volume grows.",
+  },
+];
+
+// 4×4 grid layout — row = phase, col = switch combo
+const _stateGrid = (() => {
+  const COL_W = 360;
+  const ROW_H = 720;
+  const X0 = 40;
+  const Y0 = 40;
+  return MERCHANT_STATES.map((s) => {
+    const num = parseInt(s.stateId.slice(1), 10);
+    const phaseA = s.stateId[0] === "A";
+    const isPaid = num >= 5;
+    const col = (num - 1) % 4;
+    const row = (phaseA ? 0 : 2) + (isPaid ? 1 : 0);
+    return {
+      id: s.stateId,
+      type: "merchant-state",
+      position: { x: X0 + col * COL_W, y: Y0 + row * ROW_H },
+      data: { lane: "merchant", ...s },
+    };
+  });
+})();
+
+// Transition edges
+const _edgeGreen = (id, source, target, label) => ({
+  id,
+  source,
+  target,
+  type: "smoothstep",
+  label,
+  style: { stroke: "#16a34a", strokeWidth: 2.5 },
+  labelStyle: { fill: "#15803d", fontWeight: 700, fontSize: 11 },
+  labelBgStyle: { fill: "#dcfce7" },
+  labelBgPadding: [6, 4],
+  labelBgBorderRadius: 6,
+});
+const _edgeBlue = (id, source, target, label) => ({
+  id,
+  source,
+  target,
+  type: "smoothstep",
+  label,
+  style: { stroke: "#2563eb", strokeWidth: 2 },
+  labelStyle: { fill: "#1d4ed8", fontWeight: 700, fontSize: 11 },
+  labelBgStyle: { fill: "#dbeafe" },
+  labelBgPadding: [6, 4],
+  labelBgBorderRadius: 6,
+});
+const _edgeRed = (id, source, target, label) => ({
+  id,
+  source,
+  target,
+  type: "smoothstep",
+  label,
+  animated: true,
+  style: { stroke: "#dc2626", strokeWidth: 1.5, strokeDasharray: "6 4" },
+  labelStyle: { fill: "#b91c1c", fontWeight: 600, fontSize: 10 },
+  labelBgStyle: { fill: "#fee2e2" },
+  labelBgPadding: [4, 3],
+  labelBgBorderRadius: 4,
+});
+
+const _stateEdges = [
+  // Happy path
+  _edgeGreen("h-a1-a5", "A1", "A5", "Upgrade plan"),
+  _edgeGreen("h-a5-a6", "A5", "A6", "Enable widget"),
+  _edgeGreen("h-a6-a8", "A6", "A8", "Activate App Embed"),
+  _edgeBlue("h-a8-b8", "A8", "B8", "First conversation"),
+
+  // Alternative paths that still lead to A8
+  _edgeGreen("h-a5-a7", "A5", "A7", "Activate App Embed first"),
+  _edgeGreen("h-a7-a8", "A7", "A8", "Enable widget"),
+
+  // Plan upgrades from edge-case Free states
+  _edgeGreen("u-a2-a6", "A2", "A6", "Upgrade plan"),
+  _edgeGreen("u-a3-a7", "A3", "A7", "Upgrade plan"),
+  _edgeGreen("u-a4-a8", "A4", "A8", "Upgrade plan"),
+
+  // Regressions while still pre-conversation
+  _edgeRed("r-a5-a1", "A5", "A1", "Downgrade"),
+  _edgeRed("r-a8-a6", "A8", "A6", "Disable embed"),
+  _edgeRed("r-a8-a7", "A8", "A7", "Disable widget"),
+
+  // First-conversation arrows (the few that can actually happen — only A8
+  // realistically has a live widget that gathers a conversation, but model
+  // the others as data-import or downgrade scenarios)
+  _edgeBlue("c-a1-b1", "A1", "B1", "Downgraded → had history"),
+
+  // Regressions after going live
+  _edgeRed("r-b8-b6", "B8", "B6", "Disable embed"),
+  _edgeRed("r-b8-b7", "B8", "B7", "Disable widget"),
+  _edgeRed("r-b8-b5", "B8", "B5", "Disable both"),
+  _edgeRed("r-b8-b1", "B8", "B1", "Downgrade"),
+  _edgeRed("r-b5-b1", "B5", "B1", "Downgrade"),
+  _edgeRed("r-b6-b2", "B6", "B2", "Downgrade"),
+  _edgeRed("r-b7-b3", "B7", "B3", "Downgrade"),
+
+  // Recovery from B regressions
+  _edgeGreen("h-b6-b8", "B6", "B8", "Re-activate embed"),
+  _edgeGreen("h-b7-b8", "B7", "B8", "Re-enable widget"),
+];
 
 export const INITIAL_VIEWS = [
   {
     id: "merchant",
-    name: "🛍️ Merchant journey",
-    nodes: _merchant.nodes,
-    edges: _merchant.edges,
+    name: "🛍️ Merchant states",
+    nodes: _stateGrid,
+    edges: _stateEdges,
     filters: defaultFilters(),
   },
   {

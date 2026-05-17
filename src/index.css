@@ -959,6 +959,223 @@ body {
   background: #fff;
 }
 
+/* ============== MERCHANT STATE NODE ============== */
+.state-node {
+  width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  font-family: "Inter", sans-serif;
+}
+.state-node.selected {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.state-node.phase-A { border-top: 3px solid #7d71fe; }
+.state-node.phase-B { border-top: 3px solid #0d9488; }
+.state-node.reason-none {
+  border-color: rgba(22, 163, 74, 0.45);
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+}
+.state-node.reason-plan {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
+}
+.state-node.reason-embed {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+}
+.state-node.reason-widget {
+  border-color: rgba(234, 88, 12, 0.45);
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
+}
+
+.ms-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ms-id {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.02em;
+}
+.state-node.phase-A .ms-id { background: #7d71fe; }
+.state-node.phase-B .ms-id { background: #0d9488; }
+.ms-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.ms-switches {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ms-sw {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.ms-sw.on {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.3);
+  color: #15803d;
+}
+.ms-sw.off {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #64748b;
+}
+.ms-sw-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 9.5px;
+  opacity: 0.75;
+}
+.ms-sw-value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+}
+
+.ms-meta {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--line);
+}
+.ms-meta-key {
+  color: var(--ink-mute);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  padding-top: 1px;
+}
+.ms-meta-val {
+  color: var(--ink);
+}
+.ms-meta-val.mono {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+.ms-summary {
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.ms-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ms-section-h {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink-mute);
+  margin-bottom: 6px;
+}
+.ms-list {
+  margin: 0;
+  padding: 0 0 0 14px;
+  list-style: disc;
+}
+.ms-list li {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 2px 0;
+}
+.ms-list.emails {
+  list-style: none;
+  padding-left: 0;
+}
+.ms-list.emails li {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--ink);
+}
+
+.ms-next {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.ms-next-arrow {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.ms-foot {
+  padding: 8px 12px 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+.ms-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.ms-reason.r-none {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+.ms-reason.r-plan {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+.ms-reason.r-embed {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+}
+.ms-reason.r-widget {
+  background: rgba(234, 88, 12, 0.15);
+  color: #c2410c;
+}
+
 /* ============== STICKY NOTE NODE ============== */
 .note-node {
   width: 220px;
