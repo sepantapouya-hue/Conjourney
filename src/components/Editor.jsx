@@ -69,6 +69,7 @@ function EditorInner({ onLogout }) {
   const [activeEvent, setActiveEvent] = useState(null);
   const [activeStage, setActiveStage] = useState(null);
   const [toast, setToast] = useState(null);
+  const [mode, setMode] = useState("select"); // 'select' | 'hand'
 
   const skipReloadRef = useRef(false);
   const rf = useReactFlow();
@@ -100,6 +101,36 @@ function EditorInner({ onLogout }) {
     setToast(msg);
     setTimeout(() => setToast(null), 2200);
   }
+
+  // Keyboard shortcuts: +/- zoom, V = select, H = hand
+  useEffect(() => {
+    function onKey(e) {
+      const t = e.target;
+      const editable =
+        t?.tagName === "INPUT" ||
+        t?.tagName === "TEXTAREA" ||
+        t?.tagName === "SELECT" ||
+        t?.isContentEditable;
+      if (editable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        rf.zoomIn({ duration: 150 });
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        rf.zoomOut({ duration: 150 });
+      } else if (e.key === "h" || e.key === "H") {
+        setMode("hand");
+        flashToast("Hand mode — drag the canvas to pan");
+      } else if (e.key === "v" || e.key === "V") {
+        setMode("select");
+        flashToast("Select mode — drag to select, click to edit");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rf]);
 
   // Event handlers wired into node data
   const onEventClick = useCallback((event, stage) => {
@@ -318,6 +349,8 @@ function EditorInner({ onLogout }) {
         views={views}
         currentViewId={currentViewId}
         filters={filters}
+        mode={mode}
+        onChangeMode={setMode}
         onChangeView={selectView}
         onAddNode={handleAddNode}
         onOpenViews={() => setShowViews(true)}
@@ -327,7 +360,7 @@ function EditorInner({ onLogout }) {
         onFitView={fitView}
       />
 
-      <div className="canvas">
+      <div className={`canvas mode-${mode}`}>
         <ReactFlow
           nodes={renderedNodes}
           edges={edges}
@@ -342,6 +375,11 @@ function EditorInner({ onLogout }) {
           maxZoom={2}
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
+          panOnDrag={mode === "hand" ? true : [1, 2]}
+          selectionOnDrag={mode === "select"}
+          nodesDraggable={mode === "select"}
+          panOnScroll={false}
+          zoomOnScroll={true}
         >
           <Background gap={28} size={1} color="rgba(15, 15, 26, 0.06)" />
           <MiniMap
@@ -354,8 +392,8 @@ function EditorInner({ onLogout }) {
         </ReactFlow>
 
         <div className="hint">
-          Tip · drag from the bottom dot of a node to connect, click an edge to
-          insert a node between, drag nodes to reposition.
+          <kbd>V</kbd> select · <kbd>H</kbd> hand · <kbd>+</kbd>/<kbd>−</kbd>{" "}
+          zoom · drag from a handle to connect · click an edge to insert a node.
         </div>
       </div>
 

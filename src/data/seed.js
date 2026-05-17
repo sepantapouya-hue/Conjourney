@@ -2,13 +2,14 @@
 // Each node is a stage with its own list of "events" (emails, banners, etc).
 
 const LANE_X = { merchant: 80, both: 540, shopper: 1000 };
-const ROW_H = 240;
 
-function stage(n, lane, y, payload) {
+// We compute y positions after the array is built, accounting for how
+// many events each stage has — otherwise tall cards overlap.
+function stage(n, lane, _idx, payload) {
   return {
     id: String(n),
     type: "stage",
-    position: { x: LANE_X[lane], y: y * ROW_H },
+    position: { x: LANE_X[lane], y: 0 },
     data: { n, lane, ...payload },
   };
 }
@@ -703,6 +704,20 @@ export const initialNodes = [
     ],
   }),
 ];
+
+// --- Layout pass: stack stages vertically with room for each card's events.
+const Y_START = 40;
+const BASE_H = 210; // header + desc + actions
+const EV_H = 38; // per event row
+const GAP = 96; // vertical breathing room between cards
+{
+  let cursor = Y_START;
+  for (const node of initialNodes) {
+    const evCount = node.data.events?.length ?? 0;
+    node.position = { x: LANE_X[node.data.lane], y: cursor };
+    cursor += BASE_H + evCount * EV_H + GAP;
+  }
+}
 
 export const initialEdges = initialNodes.slice(1).map((n, i) => ({
   id: `e${i + 1}-${i + 2}`,
