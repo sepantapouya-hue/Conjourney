@@ -508,7 +508,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const onNodeDrag = useCallback(
     (_event, draggedNode) => {
       const TOLERANCE = 6;
-      const PAD = 24; // how far the guide extends past the aligning bbox
+      const PAD = 8; // small overshoot past the aligning bbox
 
       function bounds(n) {
         const w = n.measured?.width ?? n.width ?? 340;
@@ -523,6 +523,28 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
           cx: x + w / 2,
           cy: y + h / 2,
         };
+      }
+
+      // Compute current viewport bounds in flow coords. Off-screen nodes
+      // are excluded so guides don't bleed in from far away.
+      const v = rf.getViewport();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const vp = rect && v
+        ? {
+            left: -v.x / v.zoom,
+            top: -v.y / v.zoom,
+            right: -v.x / v.zoom + rect.width / v.zoom,
+            bottom: -v.y / v.zoom + rect.height / v.zoom,
+          }
+        : null;
+      function visible(b) {
+        if (!vp) return true;
+        return (
+          b.right > vp.left &&
+          b.left < vp.right &&
+          b.bottom > vp.top &&
+          b.top < vp.bottom
+        );
       }
 
       const dragB = bounds(draggedNode);
@@ -556,6 +578,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         if (other.id === draggedNode.id) continue;
         if (other.type === "comment") continue; // skip pins
         const ob = bounds(other);
+        if (!visible(ob)) continue; // off-screen: ignore
 
         // Vertical guides — matching x positions
         if (Math.abs(dragB.left - ob.left) < TOLERANCE)
@@ -1300,11 +1323,6 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
           sync={sync}
         />
 
-        <div className="hint">
-          <kbd>⌘K</kbd> search · <kbd>V</kbd> select · <kbd>H</kbd> hand ·{" "}
-          <kbd>N</kbd> note · <kbd>C</kbd> condition · <kbd>M</kbd> comment ·{" "}
-          <kbd>⌘Z</kbd> undo · two-finger drag pans · pinch zooms.
-        </div>
       </div>
 
       {showViews && (

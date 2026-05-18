@@ -95,6 +95,9 @@ const TOOLS = [
   },
 ];
 
+import { useState } from "react";
+import ShortcutsPanel from "./ShortcutsPanel";
+
 function IconButton({ onClick, title, disabled, children }) {
   return (
     <button
@@ -124,6 +127,7 @@ export default function FloatingToolbar({
   onHistory,
   sync,
 }) {
+  const [helpOpen, setHelpOpen] = useState(false);
   return (
     <div className="floating-toolbar" role="toolbar" aria-label="Canvas tools">
       <div className="ft-group">
@@ -202,10 +206,37 @@ export default function FloatingToolbar({
 
       <div className="ft-sep" />
 
+      <div className="ft-group">
+        <IconButton
+          onClick={() => setHelpOpen((o) => !o)}
+          title="Keyboard shortcuts"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" />
+            <circle cx="12" cy="17" r="0.6" fill="currentColor" />
+          </svg>
+        </IconButton>
+      </div>
+
+      <div className="ft-sep" />
+
       <div className="ft-group ft-sync" title={sync?.tooltip || ""}>
         <span className={`ft-dot ${sync?.state || "local"}`} />
         <span className="ft-sync-label">{sync?.label || "Local"}</span>
       </div>
+
+      {helpOpen && <ShortcutsPanel onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }

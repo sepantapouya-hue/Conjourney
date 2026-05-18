@@ -706,32 +706,87 @@ html[data-theme="dark"] .filters-trigger.filtered .filters-count {
 .canvas.mode-note .react-flow__pane {
   cursor: crosshair;
 }
-.hint {
+/* Shortcuts popover (anchored to the ? button in the floating toolbar) */
+.shortcuts-panel {
   position: absolute;
-  left: 16px;
-  bottom: 90px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--ink-mute);
-  z-index: 5;
-  pointer-events: none;
-  box-shadow: var(--shadow-sm);
-  max-width: 460px;
-}
-.hint kbd {
-  display: inline-block;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  bottom: calc(100% + 12px);
+  right: 80px;
+  width: min(440px, calc(100vw - 32px));
   background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin: 0 1px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: shortcutsIn 0.16s ease-out;
+  z-index: 30;
+}
+@keyframes shortcutsIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  font: 600 12px/1 "Inter";
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.shortcuts-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
   color: var(--ink-2);
+  cursor: pointer;
+}
+.shortcuts-close:hover {
+  background: var(--hover-bg);
+  color: var(--ink);
+}
+.shortcuts-body {
+  padding: 12px 14px 16px;
+  display: grid;
+  gap: 14px;
+}
+.shortcuts-group-h {
+  font: 700 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+.shortcuts-rows {
+  display: grid;
+  gap: 4px;
+}
+.shortcuts-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.shortcuts-row kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 8px;
+  font: 600 11px/1 "JetBrains Mono", monospace;
+  background: var(--bg-soft);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
   box-shadow: 0 1px 0 var(--line-strong);
 }
 
@@ -828,20 +883,25 @@ html[data-theme="dark"] .filters-trigger.filtered .filters-count {
   position: absolute;
   pointer-events: none;
   z-index: 7;
+  opacity: 0.85;
 }
 .align-guide.vertical {
   width: 1px;
-  background: #ff00d6;
-  box-shadow: 0 0 0 0.5px rgba(255, 0, 214, 0.4);
+  background: rgba(244, 114, 182, 0.7);
 }
 .align-guide.horizontal {
   height: 1px;
-  background: #ff00d6;
-  box-shadow: 0 0 0 0.5px rgba(255, 0, 214, 0.4);
+  background: rgba(244, 114, 182, 0.7);
 }
 .align-guide.kind-center {
-  background: #00d9ff;
-  box-shadow: 0 0 0 0.5px rgba(0, 217, 255, 0.4);
+  background: rgba(56, 189, 248, 0.7);
+}
+html[data-theme="dark"] .align-guide.vertical,
+html[data-theme="dark"] .align-guide.horizontal {
+  background: rgba(244, 114, 182, 0.55);
+}
+html[data-theme="dark"] .align-guide.kind-center {
+  background: rgba(56, 189, 248, 0.55);
 }
 
 /* ============== LIVE PRESENCE ============== */
