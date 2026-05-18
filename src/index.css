@@ -15,6 +15,11 @@
   --primary-soft: #ede9ff;
   --accent: #14b8a6;
 
+  /* Hover/active overlays — semantic so both themes work without
+     swapping bg-soft (which is a structural color, not a hover one). */
+  --hover-bg: rgba(15, 15, 26, 0.05);
+  --hover-bg-strong: rgba(15, 15, 26, 0.09);
+
   color-scheme: light;
 
   --merchant: #7c3aed;
@@ -123,6 +128,10 @@ html[data-theme="dark"] {
     0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.65),
     0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* On dark, hovers brighten the surface instead of darkening it. */
+  --hover-bg: rgba(255, 255, 255, 0.06);
+  --hover-bg-strong: rgba(255, 255, 255, 0.1);
 }
 
 /* === Per-component dark tweaks where gradients are hardcoded === */
@@ -457,7 +466,8 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   color: var(--ink-2);
 }
 .btn-ghost:hover {
-  background: var(--bg-soft);
+  background: var(--hover-bg);
+  border-color: var(--line-strong);
 }
 .btn-ghost.sm {
   padding: 5px 9px;
@@ -620,7 +630,7 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   transition: background 0.15s, color 0.15s, transform 0.05s;
 }
 .ft-btn:hover {
-  background: var(--bg-soft);
+  background: var(--hover-bg);
   color: var(--ink);
 }
 .ft-btn:active {
@@ -970,8 +980,8 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   z-index: 1;
 }
 .history-row:hover {
-  background: var(--bg-soft);
-  border-color: var(--line);
+  background: var(--hover-bg);
+  border-color: var(--line-strong);
 }
 .history-row.current {
   background: var(--primary-soft);
@@ -1029,6 +1039,17 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   color: #7c2d12;
   position: relative;
   overflow: hidden;
+}
+.condition-node {
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.condition-node:hover {
+  box-shadow: 0 12px 28px rgba(251, 146, 60, 0.22),
+    0 1px 2px rgba(15, 15, 26, 0.06);
+  border-color: #f97316;
+}
+html[data-theme="dark"] .condition-node:hover {
+  filter: brightness(1.08);
 }
 .condition-node.selected {
   outline: 2px solid var(--primary);
@@ -1162,6 +1183,13 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   background: linear-gradient(120deg, #f8fafc 0%, #ffffff 100%);
   border-color: var(--line);
 }
+.header-node {
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.header-node:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--line-strong);
+}
 .header-node.selected {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
@@ -1249,6 +1277,13 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   color: var(--ink);
   overflow: hidden;
   font-family: "Inter", sans-serif;
+}
+.state-node {
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.state-node:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--line-strong);
 }
 .state-node.selected {
   outline: 2px solid var(--primary);
@@ -1630,6 +1665,10 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   overflow: hidden;
   transition: box-shadow 0.15s, transform 0.05s, border-color 0.15s;
 }
+.stage-node:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-lg);
+}
 .stage-node.selected {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(91, 79, 233, 0.15), var(--shadow-md);
@@ -1729,7 +1768,7 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   transition: background 0.15s, opacity 0.15s;
 }
 .sn-event:hover {
-  background: #e8e8f1;
+  background: var(--hover-bg-strong);
 }
 .sn-event.dim {
   opacity: 0.25;
@@ -1793,7 +1832,8 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   cursor: pointer;
 }
 .sn-action:hover {
-  background: var(--bg-soft);
+  background: var(--hover-bg);
+  border-color: var(--line-strong);
 }
 .sn-action.danger {
   color: #b91c1c;
