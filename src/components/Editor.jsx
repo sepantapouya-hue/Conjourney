@@ -18,6 +18,8 @@ import NoteNode from "./NoteNode";
 import ConditionNode from "./ConditionNode";
 import MerchantStateNode from "./MerchantStateNode";
 import HeaderNode from "./HeaderNode";
+import CommentNode from "./CommentNode";
+import { getIdentity } from "../lib/presence";
 import { LiveCursors, PresenceTracker } from "./LivePresence";
 import { presenceEnabled } from "./PresenceProvider";
 import LiveEditSync from "./LiveEditSync";
@@ -302,6 +304,9 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
       } else if (e.key === "c" || e.key === "C") {
         setMode("condition");
         flashToast("Condition mode — click canvas to drop a decision");
+      } else if (e.key === "m" || e.key === "M") {
+        setMode("comment");
+        flashToast("Comment mode — click canvas to drop a comment");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -381,6 +386,16 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         };
       }
       if (n.type === "header") {
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            onChange: onNoteChange,
+            onDelete: onNoteDelete,
+          },
+        };
+      }
+      if (n.type === "comment") {
         return {
           ...n,
           data: {
@@ -516,6 +531,19 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         setNodes(next);
         pushSnapshot(next, edges, filters, "Added condition");
         flashToast("Condition added — connect Yes / No branches");
+      } else if (mode === "comment") {
+        const id = uid("cmt");
+        const me = getIdentity();
+        const newNode = {
+          id,
+          type: "comment",
+          position: { x: pos.x - 18, y: pos.y - 18 },
+          data: { thread: [], resolved: false, creator: me },
+        };
+        const next = [...nodes, newNode];
+        setNodes(next);
+        pushSnapshot(next, edges, filters, "Added comment");
+        flashToast("Comment dropped — type your message and ⌘↵ to post");
       }
     },
     [mode, rf, nodes, edges, filters, setNodes, pushSnapshot],
@@ -853,8 +881,8 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
 
         <div className="hint">
           <kbd>⌘K</kbd> search · <kbd>V</kbd> select · <kbd>H</kbd> hand ·{" "}
-          <kbd>N</kbd> note · <kbd>C</kbd> condition · <kbd>⌘Z</kbd> undo ·{" "}
-          two-finger drag pans · pinch zooms.
+          <kbd>N</kbd> note · <kbd>C</kbd> condition · <kbd>M</kbd> comment ·{" "}
+          <kbd>⌘Z</kbd> undo · two-finger drag pans · pinch zooms.
         </div>
       </div>
 
@@ -925,11 +953,13 @@ const NODE_TYPES = {
   condition: ConditionNode,
   "merchant-state": MerchantStateNode,
   header: HeaderNode,
+  comment: CommentNode,
 };
 
 function miniMapColor(node) {
   if (node?.type === "note") return "#f59e0b";
   if (node?.type === "condition") return "#fb923c";
+  if (node?.type === "comment") return "#e11d48";
   const lane = node?.data?.lane;
   if (lane === "merchant") return "#7d71fe";
   if (lane === "shopper") return "#0d9488";
