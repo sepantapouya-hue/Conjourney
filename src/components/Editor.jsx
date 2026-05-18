@@ -19,6 +19,7 @@ import ConditionNode from "./ConditionNode";
 import MerchantStateNode from "./MerchantStateNode";
 import HeaderNode from "./HeaderNode";
 import CommentNode from "./CommentNode";
+import NodeContextMenu from "./NodeContextMenu";
 import { getIdentity } from "../lib/presence";
 import { LiveCursors, PresenceTracker } from "./LivePresence";
 import { presenceEnabled } from "./PresenceProvider";
@@ -90,6 +91,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const [toast, setToast] = useState(null);
   const [mode, setMode] = useState("select");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
 
   // Undo / redo history (in-memory, per session)
   const [history, setHistory] = useState([]);
@@ -571,6 +573,188 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
     setShowForm(true);
   }
 
+  // --- Context menu (right-click on a node) ---------------------------------
+  const onNodeContextMenu = useCallback(
+    (event, node) => {
+      event.preventDefault();
+      const items = [];
+      const kind = node.type;
+      const label =
+        node.data?.title ||
+        node.data?.label ||
+        node.data?.text?.slice(0, 40) ||
+        (kind === "comment" ? "Comment thread" : "Node");
+
+      if (kind === "stage") {
+        items.push({
+          id: "edit",
+          label: "Edit",
+          icon: "edit",
+          shortcut: "↵",
+        });
+      }
+      if (kind === "comment") {
+        items.push({
+          id: "comment-toggle",
+          label: node.data?.resolved ? "Reopen thread" : "Resolve thread",
+          icon: node.data?.resolved ? "reopen" : "resolve",
+        });
+      }
+      items.push({
+        id: "duplicate",
+        label: "Duplicate",
+        icon: "duplicate",
+        shortcut: "⌘D",
+      });
+      items.push({
+        id: "add-note",
+        label: "Add note next to this",
+        icon: "note",
+      });
+      items.push({
+        id: "bring-front",
+        label: "Bring to front",
+        icon: "bringFront",
+      });
+      items.push({ divider: true });
+      items.push({
+        id: "copy-json",
+        label: "Copy as JSON",
+        icon: "json",
+      });
+      items.push({ divider: true });
+      items.push({
+        id: "delete",
+        label: "Delete",
+        icon: "delete",
+        shortcut: "⌫",
+        danger: true,
+      });
+
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+        nodeKind: prettyKind(kind),
+        label,
+        items,
+      });
+    },
+    [],
+  );
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  function duplicateNode(id) {
+    const src = nodes.find((n) => n.id === id);
+    if (!src) return null;
+    const newId = `${uid(src.type || "n")}`;
+    // Deep-ish clone of data so editing the copy doesn't mutate the source.
+    const copy = {
+      ...src,
+      id: newId,
+      selected: false,
+      position: {
+        x: src.position.x + 40,
+        y: src.position.y + 40,
+      },
+      data: structuredClone(src.data ?? {}),
+    };
+    // Strip injected callbacks
+    if (copy.data) {
+      delete copy.data.onChange;
+      delete copy.data.onDelete;
+      delete copy.data.onEdit;
+      delete copy.data.onEventClick;
+      delete copy.data.filters;
+      delete copy.data.nodeId;
+    }
+    return copy;
+  }
+
+  function handleContextAction(actionId) {
+    if (!contextMenu) return;
+    const id = contextMenu.nodeId;
+    const node = nodes.find((n) => n.id === id);
+    if (!node) {
+      setContextMenu(null);
+      return;
+    }
+
+    if (actionId === "edit") {
+      setEditingId(id);
+    } else if (actionId === "duplicate") {
+      const copy = duplicateNode(id);
+      if (copy) {
+        const next = [...nodes, copy];
+        setNodes(next);
+        pushSnapshot(next, edges, filters, "Duplicated node");
+        flashToast("Node duplicated");
+        // Focus camera on the duplicate
+        setTimeout(() => {
+          rf.setCenter(
+            copy.position.x + 160,
+            copy.position.y + 100,
+            { zoom: Math.max(rf.getZoom(), 0.9), duration: 400 },
+          );
+        }, 60);
+      }
+    } else if (actionId === "delete") {
+      const nextNodes = nodes.filter((n) => n.id !== id);
+      const nextEdges = edges.filter(
+        (e) => e.source !== id && e.target !== id,
+      );
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      pushSnapshot(nextNodes, nextEdges, filters, "Deleted node");
+      flashToast("Node deleted");
+    } else if (actionId === "bring-front") {
+      // Move the node to the end of the array (drawn last = on top)
+      const next = [...nodes.filter((n) => n.id !== id), node];
+      setNodes(next);
+      pushSnapshot(next, edges, filters, "Brought to front");
+    } else if (actionId === "add-note") {
+      const noteId = uid("note");
+      const newNode = {
+        id: noteId,
+        type: "note",
+        position: {
+          x: node.position.x + 360,
+          y: node.position.y + 20,
+        },
+        data: { text: "", color: "amber" },
+      };
+      const next = [...nodes, newNode];
+      setNodes(next);
+      pushSnapshot(next, edges, filters, "Added note");
+      flashToast("Note dropped next to the card");
+    } else if (actionId === "comment-toggle") {
+      const nextNodes = nodes.map((n) =>
+        n.id === id
+          ? { ...n, data: { ...n.data, resolved: !n.data.resolved } }
+          : n,
+      );
+      setNodes(nextNodes);
+      pushSnapshot(nextNodes, edges, filters, "Toggled thread");
+    } else if (actionId === "copy-json") {
+      try {
+        const payload = { ...node, data: structuredClone(node.data) };
+        delete payload.data?.onChange;
+        delete payload.data?.onDelete;
+        delete payload.data?.onEdit;
+        delete payload.data?.onEventClick;
+        delete payload.data?.filters;
+        delete payload.data?.nodeId;
+        navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        flashToast("Node JSON copied to clipboard");
+      } catch {
+        flashToast("Couldn't copy to clipboard");
+      }
+    }
+
+    setContextMenu(null);
+  }
+
   function handleFormSubmit(payload) {
     if (editingId) {
       const nextNodes = nodes.map((n) =>
@@ -865,6 +1049,11 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onNodeDragStop={onNodeDragStop}
+          onNodeContextMenu={onNodeContextMenu}
+          onPaneContextMenu={(e) => {
+            e.preventDefault();
+            closeContextMenu();
+          }}
           nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.2 }}
@@ -1009,6 +1198,12 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         />
       )}
 
+      <NodeContextMenu
+        menu={contextMenu}
+        onClose={closeContextMenu}
+        onAction={handleContextAction}
+      />
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
@@ -1022,6 +1217,16 @@ const NODE_TYPES = {
   header: HeaderNode,
   comment: CommentNode,
 };
+
+function prettyKind(t) {
+  if (t === "stage") return "Stage";
+  if (t === "note") return "Note";
+  if (t === "condition") return "Condition";
+  if (t === "merchant-state") return "State";
+  if (t === "header") return "Header";
+  if (t === "comment") return "Comment";
+  return t;
+}
 
 function miniMapColor(node) {
   if (node?.type === "note") return "#f59e0b";
