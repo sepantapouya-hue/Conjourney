@@ -58,18 +58,17 @@ export default function NodeForm({ initial, onSubmit, onCancel }) {
           </button>
         </div>
         <form className="panel-body" onSubmit={submit}>
-          <div className="field">
-            <label>Title</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => patch({ title: e.target.value })}
-              placeholder="e.g. Catalog import complete"
-              autoFocus
-            />
-          </div>
-
           <div className="grid-2">
+            <div className="field">
+              <label>ID badge</label>
+              <input
+                type="text"
+                value={form.n}
+                onChange={(e) => patch({ n: e.target.value })}
+                placeholder="e.g. s0, s2.1, A8, B8"
+                maxLength={8}
+              />
+            </div>
             <div className="field">
               <label>Lane</label>
               <select
@@ -83,15 +82,27 @@ export default function NodeForm({ initial, onSubmit, onCancel }) {
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label>When</label>
-              <input
-                type="text"
-                value={form.when}
-                onChange={(e) => patch({ when: e.target.value })}
-                placeholder="e.g. Day 0 · 0s"
-              />
-            </div>
+          </div>
+
+          <div className="field">
+            <label>Title</label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => patch({ title: e.target.value })}
+              placeholder="e.g. Catalog import complete"
+              autoFocus
+            />
+          </div>
+
+          <div className="field">
+            <label>When</label>
+            <input
+              type="text"
+              value={form.when}
+              onChange={(e) => patch({ when: e.target.value })}
+              placeholder="e.g. Day 0 · 0s"
+            />
           </div>
 
           <div className="field">

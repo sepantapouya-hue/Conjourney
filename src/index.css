@@ -1650,15 +1650,19 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   margin-bottom: 6px;
 }
 .sn-num {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
   height: 22px;
+  padding: 0 6px;
   border-radius: 6px;
   background: var(--primary-soft);
   color: var(--primary);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.02em;
 }
 .sn-lane {
   font-size: 10.5px;
