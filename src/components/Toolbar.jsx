@@ -13,6 +13,8 @@ export default function Toolbar({
   onSaveView,
   onLogout,
   onToggleFilter,
+  theme,
+  onToggleTheme,
 }) {
   return (
     <header className="toolbar">
@@ -63,6 +65,41 @@ export default function Toolbar({
 
       <div className="toolbar-right">
         {presenceEnabled && <PresenceCluster />}
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={onToggleTheme}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          aria-label="Toggle theme"
+        >
+          {theme === "dark" ? (
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <circle cx="12" cy="12" r="4" fill="currentColor" />
+              <g
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                fill="none"
+              >
+                <path d="M12 2v2" />
+                <path d="M12 20v2" />
+                <path d="M2 12h2" />
+                <path d="M20 12h2" />
+                <path d="m4.9 4.9 1.4 1.4" />
+                <path d="m17.7 17.7 1.4 1.4" />
+                <path d="m4.9 19.1 1.4-1.4" />
+                <path d="m17.7 6.3 1.4-1.4" />
+              </g>
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"
+                fill="currentColor"
+              />
+            </svg>
+          )}
+        </button>
         <button type="button" className="btn-primary" onClick={onAddNode}>
           + Add node
         </button>

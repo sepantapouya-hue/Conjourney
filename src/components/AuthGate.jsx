@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Logo from "./Logo";
 
-export default function AuthGate({ onSubmit }) {
+export default function AuthGate({ onSubmit, theme, onToggleTheme }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState(false);
 
@@ -13,6 +13,15 @@ export default function AuthGate({ onSubmit }) {
 
   return (
     <div className="auth-screen">
+      <button
+        type="button"
+        className="theme-toggle auth-theme-toggle"
+        onClick={onToggleTheme}
+        title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+        aria-label="Toggle theme"
+      >
+        {theme === "dark" ? "☀" : "☾"}
+      </button>
       <div className="auth-grid" aria-hidden="true" />
       <div className="auth-card">
         <div className="auth-logo">

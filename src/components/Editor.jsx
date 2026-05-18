@@ -59,7 +59,7 @@ function uid(prefix = "n") {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
 }
 
-function EditorInner({ onLogout }) {
+function EditorInner({ onLogout, theme, onToggleTheme }) {
   const [views, setViews] = useState(() => {
     const local = loadLocal();
     if (Array.isArray(local) && local.length) return local;
@@ -733,6 +733,8 @@ function EditorInner({ onLogout }) {
         onSaveView={saveCurrentView}
         onLogout={onLogout}
         onToggleFilter={toggleFilter}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
 
       <div
@@ -775,7 +777,11 @@ function EditorInner({ onLogout }) {
             variant={BackgroundVariant.Dots}
             gap={22}
             size={1.6}
-            color="rgba(15, 15, 26, 0.16)"
+            color={
+              theme === "dark"
+                ? "rgba(255, 255, 255, 0.14)"
+                : "rgba(15, 15, 26, 0.16)"
+            }
           />
           <MiniMap
             pannable
