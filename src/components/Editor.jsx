@@ -78,7 +78,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const currentView =
     views.find((v) => v.id === currentViewId) || views[0];
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(currentView.nodes);
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState(currentView.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(currentView.edges);
   const [filters, setFilters] = useState(currentView.filters);
 
@@ -642,6 +642,109 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const onNodeDragStart = useCallback(() => {
     setAlignGuides([]);
   }, []);
+
+  // --- Magnetic snap: intercepts position changes during drag and nudges
+  // them to align with the nearest visible card's anchor (edge or center).
+  const onNodesChange = useCallback(
+    (changes) => {
+      const SNAP = 6;
+      // Snapshot of helpers (kept in sync with the alignment guide code)
+      const v = rf.getViewport();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const vp = rect && v
+        ? {
+            left: -v.x / v.zoom,
+            top: -v.y / v.zoom,
+            right: -v.x / v.zoom + rect.width / v.zoom,
+            bottom: -v.y / v.zoom + rect.height / v.zoom,
+          }
+        : null;
+      function visible(b) {
+        if (!vp) return true;
+        return (
+          b.right > vp.left &&
+          b.left < vp.right &&
+          b.bottom > vp.top &&
+          b.top < vp.bottom
+        );
+      }
+      function bounds(n, posOverride) {
+        const w = n.measured?.width ?? n.width ?? 340;
+        const h = n.measured?.height ?? n.height ?? 200;
+        const x = posOverride?.x ?? n.position?.x ?? 0;
+        const y = posOverride?.y ?? n.position?.y ?? 0;
+        return {
+          w,
+          h,
+          left: x,
+          right: x + w,
+          top: y,
+          bottom: y + h,
+          cx: x + w / 2,
+          cy: y + h / 2,
+        };
+      }
+
+      const adjusted = changes.map((c) => {
+        if (c.type !== "position" || !c.dragging || !c.position) return c;
+        const node = nodes.find((n) => n.id === c.id);
+        if (!node) return c;
+
+        const dragB = bounds(node, c.position);
+        let bestDx = null;
+        let bestDy = null;
+
+        for (const other of nodes) {
+          if (other.id === c.id) continue;
+          if (other.type === "comment") continue;
+          const ob = bounds(other);
+          if (!visible(ob)) continue;
+
+          // X anchors
+          for (const [from, to] of [
+            [dragB.left, ob.left],
+            [dragB.right, ob.right],
+            [dragB.cx, ob.cx],
+          ]) {
+            const d = to - from;
+            if (Math.abs(d) < SNAP) {
+              if (bestDx === null || Math.abs(d) < Math.abs(bestDx)) bestDx = d;
+            }
+          }
+          // Y anchors
+          for (const [from, to] of [
+            [dragB.top, ob.top],
+            [dragB.bottom, ob.bottom],
+            [dragB.cy, ob.cy],
+          ]) {
+            const d = to - from;
+            if (Math.abs(d) < SNAP) {
+              if (bestDy === null || Math.abs(d) < Math.abs(bestDy)) bestDy = d;
+            }
+          }
+        }
+
+        if (bestDx === null && bestDy === null) return c;
+        return {
+          ...c,
+          position: {
+            x: c.position.x + (bestDx ?? 0),
+            y: c.position.y + (bestDy ?? 0),
+          },
+          // Also snap positionAbsolute so children render correctly
+          positionAbsolute: c.positionAbsolute
+            ? {
+                x: c.positionAbsolute.x + (bestDx ?? 0),
+                y: c.positionAbsolute.y + (bestDy ?? 0),
+              }
+            : c.positionAbsolute,
+        };
+      });
+
+      onNodesChangeBase(adjusted);
+    },
+    [rf, nodes, onNodesChangeBase],
+  );
 
   const onPaneClick = useCallback(
     (e) => {
