@@ -958,6 +958,22 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
     pushSnapshot(nodes, edges, nextFilters, `Toggled ${t} filter`);
   }
 
+  function filtersAll() {
+    const nextFilters = Object.fromEntries(
+      Object.keys(filters).map((k) => [k, true]),
+    );
+    setFilters(nextFilters);
+    pushSnapshot(nodes, edges, nextFilters, "Show all event types");
+  }
+
+  function filtersNone() {
+    const nextFilters = Object.fromEntries(
+      Object.keys(filters).map((k) => [k, false]),
+    );
+    setFilters(nextFilters);
+    pushSnapshot(nodes, edges, nextFilters, "Hide all event types");
+  }
+
   function fitView() {
     rf.fitView({ padding: 0.18, duration: 400 });
   }
@@ -1024,11 +1040,12 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         currentViewId={currentViewId}
         filters={filters}
         onChangeView={selectView}
-        onAddNode={handleAddNode}
         onOpenViews={() => setShowViews(true)}
         onSaveView={saveCurrentView}
         onLogout={onLogout}
         onToggleFilter={toggleFilter}
+        onFiltersAll={filtersAll}
+        onFiltersNone={filtersNone}
         theme={theme}
         onToggleTheme={onToggleTheme}
         isDirty={isDirty}
