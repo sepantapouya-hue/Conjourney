@@ -15,6 +15,7 @@ export default function Toolbar({
   onToggleFilter,
   theme,
   onToggleTheme,
+  isDirty,
 }) {
   return (
     <header className="toolbar">
@@ -42,6 +43,14 @@ export default function Toolbar({
           <button type="button" className="btn-ghost" onClick={onOpenViews}>
             Manage views
           </button>
+          {isDirty && (
+            <span
+              className="unsaved-badge"
+              title="You have unsaved changes — click Save view to push them to the shared backend."
+            >
+              Unsaved
+            </span>
+          )}
         </div>
       </div>
 
@@ -103,8 +112,13 @@ export default function Toolbar({
         <button type="button" className="btn-primary" onClick={onAddNode}>
           + Add node
         </button>
-        <button type="button" className="btn-ghost" onClick={onSaveView}>
-          Save view
+        <button
+          type="button"
+          className={isDirty ? "btn-primary" : "btn-ghost"}
+          onClick={onSaveView}
+          title={isDirty ? "Save unsaved changes" : "Re-save current view"}
+        >
+          {isDirty ? "Save changes" : "Save view"}
         </button>
         <button type="button" className="btn-ghost logout" onClick={onLogout}>
           Sign out

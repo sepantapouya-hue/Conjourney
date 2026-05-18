@@ -429,6 +429,41 @@ html[data-theme="dark"] .react-flow__attribution { display: none; }
   align-items: center;
   gap: 6px;
 }
+.unsaved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: default;
+  user-select: none;
+}
+.unsaved-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #dc2626;
+  animation: unsavedPulse 1.6s ease-in-out infinite;
+}
+html[data-theme="dark"] .unsaved-badge {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fda4a4;
+}
+html[data-theme="dark"] .unsaved-badge::before {
+  background: #f87171;
+}
+@keyframes unsavedPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.25); }
+}
+
 .view-switcher select {
   padding: 7px 10px;
   border-radius: 8px;

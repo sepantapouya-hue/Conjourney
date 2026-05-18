@@ -564,16 +564,36 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
       flashToast("Node updated");
     } else {
       const id = uid("n");
+      // Drop the new node at the current viewport center so it lands in the
+      // section the user is currently looking at.
+      const rect = canvasRef.current?.getBoundingClientRect();
+      let centerFlow = { x: 600, y: 200 };
+      if (rect) {
+        centerFlow = rf.screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+      }
+      // Offset so the card is centered on the viewport center (card is
+      // ~340px wide; we just bias by half a typical card).
       const newNode = {
         id,
         type: "stage",
-        position: { x: 600, y: 200 },
+        position: { x: centerFlow.x - 170, y: centerFlow.y - 120 },
         data: { ...payload, n: nodes.length + 1 },
       };
       const nextNodes = [...nodes, newNode];
       setNodes(nextNodes);
       pushSnapshot(nextNodes, edges, filters, "Created node");
       flashToast("Node created");
+
+      // Focus the camera on the new node so the user sees it land.
+      setTimeout(() => {
+        rf.setCenter(centerFlow.x, centerFlow.y, {
+          zoom: Math.max(rf.getZoom(), 0.9),
+          duration: 400,
+        });
+      }, 60);
     }
     setShowForm(false);
     setEditingId(null);
@@ -766,6 +786,35 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const canUndo = pointer > 0;
   const canRedo = pointer < history.length - 1;
 
+  // Dirty state — nodes/edges/filters drift away from the saved view by
+  // reference. Reference equality is cheap and accurate because every
+  // edit replaces the array, and saveCurrentView writes the current
+  // refs back into `views`.
+  const isDirty = useMemo(() => {
+    if (!currentView) return false;
+    return (
+      nodes !== currentView.nodes ||
+      edges !== currentView.edges ||
+      filters !== currentView.filters
+    );
+  }, [nodes, edges, filters, currentView]);
+
+  // Document title + browser beforeunload guard
+  useEffect(() => {
+    const base = "Conjourney — Convi User Journey";
+    document.title = isDirty ? `• ${base}` : base;
+  }, [isDirty]);
+
+  useEffect(() => {
+    function onBeforeUnload(e) {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
+
   return (
     <div className="editor">
       <Toolbar
@@ -781,6 +830,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         onToggleFilter={toggleFilter}
         theme={theme}
         onToggleTheme={onToggleTheme}
+        isDirty={isDirty}
       />
 
       <div
