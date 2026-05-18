@@ -2597,15 +2597,24 @@ html[data-theme="dark"] .ctx-item.danger:hover {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--ink);
+  background: #1c1c2a;
   color: #fff;
   padding: 10px 16px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.18);
   z-index: 60;
   animation: fadeIn 0.2s ease;
+}
+html[data-theme="dark"] .toast {
+  background: #2a2a3e;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.35);
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translate(-50%, 10px); }
