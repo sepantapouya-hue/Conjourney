@@ -552,28 +552,46 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   }
 
   // --- Auto layout (Tidy) ---------------------------------------------------
+  // Lays out headers, stages, conditions, and state cards together — grouped
+  // by lane, sorted by their current y so the existing order is preserved.
+  // Notes stay where they are (they're user annotations, not part of the
+  // canonical flow).
   function autoLayout() {
-    const journey = [];
-    const others = [];
-    for (const n of nodes) {
-      if (n.type === "stage" || n.type === "condition") journey.push(n);
-      else others.push(n);
+    const notes = nodes.filter((n) => n.type === "note");
+    const tracked = nodes.filter((n) => n.type !== "note");
+
+    const byLane = {};
+    for (const n of tracked) {
+      const lane = n.data?.lane || "merchant";
+      if (!byLane[lane]) byLane[lane] = [];
+      byLane[lane].push(n);
     }
-    journey.sort((a, b) => a.position.y - b.position.y);
-    let cursor = LAYOUT.Y_START;
-    const placed = journey.map((n) => {
-      const lane = n.data.lane || "merchant";
+
+    function heightOf(n) {
+      if (n.type === "header") return 130;
+      if (n.type === "condition") return 220;
+      if (n.type === "merchant-state") return 620;
+      const evCount = n.data?.events?.length || 0;
+      return 210 + evCount * 44;
+    }
+
+    const Y_START = 60;
+    const GAP = 100;
+
+    const placed = [];
+    for (const lane of Object.keys(byLane)) {
+      const list = byLane[lane]
+        .slice()
+        .sort((a, b) => a.position.y - b.position.y);
       const x = LAYOUT.LANE_X[lane] ?? LAYOUT.LANE_X.merchant;
-      const next = { ...n, position: { x, y: cursor } };
-      if (n.type === "condition") {
-        cursor += LAYOUT.COND_H + LAYOUT.GAP;
-      } else {
-        const evCount = n.data.events?.length || 0;
-        cursor += LAYOUT.STAGE_BASE_H + evCount * LAYOUT.STAGE_EV_H + LAYOUT.GAP;
+      let cursor = Y_START;
+      for (const n of list) {
+        placed.push({ ...n, position: { x, y: cursor } });
+        cursor += heightOf(n) + GAP;
       }
-      return next;
-    });
-    const nextNodes = [...placed, ...others];
+    }
+
+    const nextNodes = [...placed, ...notes];
     setNodes(nextNodes);
     pushSnapshot(nextNodes, edges, filters, "Tidied layout");
     setTimeout(() => rf.fitView({ padding: 0.18, duration: 400 }), 60);
