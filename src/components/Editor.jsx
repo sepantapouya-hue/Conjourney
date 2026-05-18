@@ -502,6 +502,8 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const onPaneClick = useCallback(
     (e) => {
       const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      let dropped = false;
+
       if (mode === "note") {
         const id = uid("note");
         const newNode = {
@@ -514,6 +516,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         setNodes(next);
         pushSnapshot(next, edges, filters, "Added note");
         flashToast("Note added — double-click to write");
+        dropped = true;
       } else if (mode === "condition") {
         const id = uid("cond");
         const newNode = {
@@ -531,6 +534,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         setNodes(next);
         pushSnapshot(next, edges, filters, "Added condition");
         flashToast("Condition added — connect Yes / No branches");
+        dropped = true;
       } else if (mode === "comment") {
         const id = uid("cmt");
         const me = getIdentity();
@@ -544,6 +548,19 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
         setNodes(next);
         pushSnapshot(next, edges, filters, "Added comment");
         flashToast("Comment dropped — type your message and ⌘↵ to post");
+        dropped = true;
+      }
+
+      // Pan + (if needed) zoom-in to the drop point so the new element
+      // lands center-stage. If user is already zoomed in further, keep it.
+      if (dropped) {
+        const targetZoom = mode === "comment" ? 1.4 : 1.1;
+        setTimeout(() => {
+          rf.setCenter(pos.x, pos.y, {
+            zoom: Math.max(rf.getZoom(), targetZoom),
+            duration: 400,
+          });
+        }, 60);
       }
     },
     [mode, rf, nodes, edges, filters, setNodes, pushSnapshot],
