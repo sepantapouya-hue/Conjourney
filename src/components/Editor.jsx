@@ -6,6 +6,7 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
+  ViewportPortal,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -92,6 +93,7 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   const [mode, setMode] = useState("select");
   const [isConnecting, setIsConnecting] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+  const [alignGuides, setAlignGuides] = useState([]);
 
   // Undo / redo history (in-memory, per session)
   const [history, setHistory] = useState([]);
@@ -498,8 +500,125 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
   );
 
   const onNodeDragStop = useCallback(() => {
+    setAlignGuides([]);
     pushSnapshot(nodes, edges, filters, "Moved node");
   }, [nodes, edges, filters, pushSnapshot]);
+
+  // --- Figma-style alignment guides ----------------------------------------
+  const onNodeDrag = useCallback(
+    (_event, draggedNode) => {
+      const TOLERANCE = 6;
+      const PAD = 24; // how far the guide extends past the aligning bbox
+
+      function bounds(n) {
+        const w = n.measured?.width ?? n.width ?? 340;
+        const h = n.measured?.height ?? n.height ?? 200;
+        const x = n.position?.x ?? 0;
+        const y = n.position?.y ?? 0;
+        return {
+          left: x,
+          right: x + w,
+          top: y,
+          bottom: y + h,
+          cx: x + w / 2,
+          cy: y + h / 2,
+        };
+      }
+
+      const dragB = bounds(draggedNode);
+      const verticals = new Map(); // x → { y1, y2, kind }
+      const horizontals = new Map();
+
+      function pushV(x, y1, y2, kind) {
+        const key = Math.round(x);
+        const cur = verticals.get(key) || {
+          y1: Infinity,
+          y2: -Infinity,
+          kind,
+        };
+        cur.y1 = Math.min(cur.y1, y1);
+        cur.y2 = Math.max(cur.y2, y2);
+        verticals.set(key, cur);
+      }
+      function pushH(y, x1, x2, kind) {
+        const key = Math.round(y);
+        const cur = horizontals.get(key) || {
+          x1: Infinity,
+          x2: -Infinity,
+          kind,
+        };
+        cur.x1 = Math.min(cur.x1, x1);
+        cur.x2 = Math.max(cur.x2, x2);
+        horizontals.set(key, cur);
+      }
+
+      for (const other of nodes) {
+        if (other.id === draggedNode.id) continue;
+        if (other.type === "comment") continue; // skip pins
+        const ob = bounds(other);
+
+        // Vertical guides — matching x positions
+        if (Math.abs(dragB.left - ob.left) < TOLERANCE)
+          pushV(
+            ob.left,
+            Math.min(dragB.top, ob.top) - PAD,
+            Math.max(dragB.bottom, ob.bottom) + PAD,
+            "edge",
+          );
+        if (Math.abs(dragB.right - ob.right) < TOLERANCE)
+          pushV(
+            ob.right,
+            Math.min(dragB.top, ob.top) - PAD,
+            Math.max(dragB.bottom, ob.bottom) + PAD,
+            "edge",
+          );
+        if (Math.abs(dragB.cx - ob.cx) < TOLERANCE)
+          pushV(
+            ob.cx,
+            Math.min(dragB.top, ob.top) - PAD,
+            Math.max(dragB.bottom, ob.bottom) + PAD,
+            "center",
+          );
+
+        // Horizontal guides — matching y positions
+        if (Math.abs(dragB.top - ob.top) < TOLERANCE)
+          pushH(
+            ob.top,
+            Math.min(dragB.left, ob.left) - PAD,
+            Math.max(dragB.right, ob.right) + PAD,
+            "edge",
+          );
+        if (Math.abs(dragB.bottom - ob.bottom) < TOLERANCE)
+          pushH(
+            ob.bottom,
+            Math.min(dragB.left, ob.left) - PAD,
+            Math.max(dragB.right, ob.right) + PAD,
+            "edge",
+          );
+        if (Math.abs(dragB.cy - ob.cy) < TOLERANCE)
+          pushH(
+            ob.cy,
+            Math.min(dragB.left, ob.left) - PAD,
+            Math.max(dragB.right, ob.right) + PAD,
+            "center",
+          );
+      }
+
+      const guides = [];
+      for (const [x, v] of verticals) {
+        guides.push({ orient: "v", x, y1: v.y1, y2: v.y2, kind: v.kind });
+      }
+      for (const [y, h] of horizontals) {
+        guides.push({ orient: "h", y, x1: h.x1, x2: h.x2, kind: h.kind });
+      }
+      setAlignGuides(guides);
+    },
+    [nodes],
+  );
+
+  const onNodeDragStart = useCallback(() => {
+    setAlignGuides([]);
+  }, []);
 
   const onPaneClick = useCallback(
     (e) => {
@@ -1065,6 +1184,8 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
           onConnectEnd={onConnectEnd}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onNodeContextMenu={onNodeContextMenu}
           onPaneContextMenu={(e) => {
@@ -1110,6 +1231,33 @@ function EditorInner({ onLogout, theme, onToggleTheme }) {
           />
           <Controls position="bottom-right" showInteractive={false} />
           {presenceEnabled && <LiveCursors />}
+          {alignGuides.length > 0 && (
+            <ViewportPortal>
+              {alignGuides.map((g, i) =>
+                g.orient === "v" ? (
+                  <div
+                    key={`v-${i}`}
+                    className={`align-guide vertical kind-${g.kind}`}
+                    style={{
+                      left: g.x,
+                      top: g.y1,
+                      height: g.y2 - g.y1,
+                    }}
+                  />
+                ) : (
+                  <div
+                    key={`h-${i}`}
+                    className={`align-guide horizontal kind-${g.kind}`}
+                    style={{
+                      left: g.x1,
+                      top: g.y,
+                      width: g.x2 - g.x1,
+                    }}
+                  />
+                ),
+              )}
+            </ViewportPortal>
+          )}
         </ReactFlow>
 
         {presenceEnabled && (

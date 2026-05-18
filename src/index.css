@@ -823,6 +823,27 @@ html[data-theme="dark"] .filters-trigger.filtered .filters-count {
   letter-spacing: 0.01em;
 }
 
+/* ============== ALIGNMENT GUIDES (drag) ============== */
+.align-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 7;
+}
+.align-guide.vertical {
+  width: 1px;
+  background: #ff00d6;
+  box-shadow: 0 0 0 0.5px rgba(255, 0, 214, 0.4);
+}
+.align-guide.horizontal {
+  height: 1px;
+  background: #ff00d6;
+  box-shadow: 0 0 0 0.5px rgba(255, 0, 214, 0.4);
+}
+.align-guide.kind-center {
+  background: #00d9ff;
+  box-shadow: 0 0 0 0.5px rgba(0, 217, 255, 0.4);
+}
+
 /* ============== LIVE PRESENCE ============== */
 .live-cursor {
   position: absolute;
